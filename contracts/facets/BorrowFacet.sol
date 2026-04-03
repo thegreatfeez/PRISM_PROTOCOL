@@ -152,9 +152,18 @@ contract BorrowFacet {
 
         LibERC20.transfer(s, address(this), msg.sender, collateral);
 
+        delete s.listings[_tokenId];
         delete s.borrowListings[_tokenId];
         if (s.stakes[_tokenId].staker != address(0)) {
             delete s.stakes[_tokenId];
+        }
+
+        address currentOwner = s.tokenIdToOwner[_tokenId];
+        if (currentOwner != address(0)) {
+            s.addressToNFTBalance[currentOwner] -= 1;
+            s.tokenIdToOwner[_tokenId] = address(0);
+            s.tokenIdToApproved[_tokenId] = address(0);
+            s.totalNFTBurned += 1;
         }
 
         emit BorrowerLiquidated(_tokenId, msg.sender);

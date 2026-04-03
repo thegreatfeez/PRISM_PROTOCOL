@@ -188,11 +188,11 @@ Not every player needs to own a rare asset permanently. Prism Protocol lets you 
 5. Return the NFT before the deadline to receive your collateral back
 
 **What happens if you miss the deadline:**
-- You keep the NFT permanently
+- The NFT is burned permanently
 - You lose your collateral permanently
 - The staker receives your collateral as compensation
 
-This means collateral is always set close to the actual value of the asset. It protects stakers and ensures borrowers have a real incentive to return on time.
+This means collateral should be set close to the actual value of the asset. It protects stakers and ensures borrowers have a real incentive to return on time.
 
 ---
 
@@ -284,7 +284,7 @@ Decide how long you want to stake. Options are 30, 60, or 90 days. Longer period
 
 **Step 2 — Set your collateral requirement**
 
-This is the amount a borrower must post to rent your NFT. Set it close to the market value of your asset — this is your protection if a borrower misses their deadline and keeps the NFT.
+This is the amount a borrower must post to rent your NFT. Set it close to the market value of your asset — this is your protection if a borrower misses their deadline and the NFT is burned.
 
 **Step 3 — Stake**
 
@@ -300,7 +300,7 @@ When your staking period ends and no active borrow exists, call `unstake(tokenId
 
 **If a borrower misses their deadline:**
 
-Call `liquidate(tokenId)`. You receive the borrower's collateral in full. The borrower keeps the NFT. This is your insurance.
+Call `liquidate(tokenId)`. You receive the borrower's collateral in full and the NFT is burned. This is your insurance.
 
 ---
 
@@ -335,7 +335,7 @@ Call `returnNFT(tokenId)` before your deadline. The NFT goes back to the protoco
 
 **If you miss the deadline:**
 
-You keep the NFT but your collateral is gone permanently. The original staker receives it as compensation. Only miss the deadline intentionally if keeping the NFT is worth more than the collateral you posted.
+Your NFT is burned and your collateral is gone permanently. The original staker receives it as compensation. Only miss the deadline intentionally if losing the NFT is worth less than the collateral you posted.
 
 ---
 
@@ -423,8 +423,8 @@ Your NFTs, balances, staking records, and borrow positions all live at the Diamo
 | Stake NFT | Lock NFT for X days | Earns 80% of all borrow fees on that NFT |
 | Borrow NFT | Collateral + borrow fee | Collateral returned on time, fee split 80/20 |
 | Return NFT on time | Nothing | Full collateral refunded |
-| Miss borrow deadline | Collateral forfeited | Staker receives as compensation |
-| Liquidate late borrower | Gas only | Staker receives collateral |
+| Miss borrow deadline | Collateral forfeited | NFT burned, staker receives collateral |
+| Liquidate late borrower | Gas only | NFT burned, staker receives collateral |
 
 ---
 

@@ -2,11 +2,14 @@
 pragma solidity ^0.8.0;
 
 import "../contracts/interfaces/IDiamondCut.sol";
+import "../contracts/interfaces/IDiamondLoupe.sol";
 import "../contracts/facets/DiamondCutFacet.sol";
 import "../contracts/facets/DiamondLoupeFacet.sol";
 import "../contracts/facets/OwnershipFacet.sol";
 import "../contracts/facets/ERC721Facet.sol";
 import "../contracts/facets/ERC20Facet.sol";
+import "../contracts/facets/BorrowFacet.sol";
+import "../contracts/facets/MarketplaceFacet.sol";
 import "../contracts/facets/MultisigFacet.sol";
 import "../contracts/facets/SVGFacet.sol";
 import "../contracts/Diamond.sol";
@@ -21,6 +24,8 @@ contract DiamondDeployer is TestHelpers {
     OwnershipFacet ownerF;
     ERC721Facet erc721F;
     ERC20Facet erc20F;
+    BorrowFacet borrowF;
+    MarketplaceFacet marketF;
     MultisigFacet multisigF;
     SVGFacet svgF;
 
@@ -41,6 +46,8 @@ contract DiamondDeployer is TestHelpers {
     ownerF    = new OwnershipFacet();
     erc721F   = new ERC721Facet();
     erc20F    = new ERC20Facet();
+    borrowF   = new BorrowFacet();
+    marketF   = new MarketplaceFacet();
     multisigF = new MultisigFacet();
     svgF      = new SVGFacet();
 
@@ -51,6 +58,13 @@ contract DiamondDeployer is TestHelpers {
     cuts[3] = buildAddCutByName(address(multisigF), "MultisigFacet");
 
     executeDiamondCut(IDiamondCut(address(diamond)), cuts, address(0), "");
+
+    IDiamondLoupe loupe = IDiamondLoupe(address(diamond));
+    IDiamondCut.FacetCut[] memory addCuts = new IDiamondCut.FacetCut[](3);
+    addCuts[0] = buildAddMissingCutByName(loupe, address(erc20F), "ERC20Facet");
+    addCuts[1] = buildAddCutByName(address(borrowF), "BorrowFacet");
+    addCuts[2] = buildAddCutByName(address(marketF), "MarketplaceFacet");
+    executeDiamondCut(IDiamondCut(address(diamond)), addCuts, address(0), "");
 
     IDiamondCut.FacetCut[] memory svgCut = new IDiamondCut.FacetCut[](1);
     bytes4[] memory svgSelectors = new bytes4[](1);
@@ -181,6 +195,33 @@ contract DiamondDeployer is TestHelpers {
         _writeTokenSvg(address(diamond), 2);
         _writeTokenSvg(address(diamond), 3);
         _writeTokenSvg(address(diamond), 4);
+    }
+
+    function testLiquidationBurnsToken() public {
+        _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.mint.selector, timidan));
+
+        _multisigCall(address(diamond), abi.encodeWithSelector(ERC20Facet.initERC20.selector, "Prism", "PRM", 18));
+        _multisigCall(address(diamond), abi.encodeWithSelector(ERC20Facet.mintERC20.selector, magicEden, 1_000 ether));
+        _multisigCall(address(diamond), abi.encodeWithSelector(BorrowFacet.setBorrowFeeRate.selector, 0));
+
+        vm.prank(timidan);
+        BorrowFacet(address(diamond)).listForBorrow(1, 100 ether, 7 days);
+
+        vm.prank(magicEden);
+        BorrowFacet(address(diamond)).borrow(1, 7 days);
+
+        vm.warp(block.timestamp + 7 days + 1);
+        vm.prank(timidan);
+        BorrowFacet(address(diamond)).liquidate(1);
+
+        assertEq(ERC721Facet(address(diamond)).totalSupply(), 0);
+
+        vm.expectRevert("ERC721: token does not exist");
+        ERC721Facet(address(diamond)).ownerOf(1);
+
+        vm.prank(magicEden);
+        vm.expectRevert("Marketplace: not token owner");
+        MarketplaceFacet(address(diamond)).listNFT(1, 1 ether);
     }
 
 }

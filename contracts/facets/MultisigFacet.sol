@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import {AppStorage} from "../libraries/AppStorage.sol";
 import {LibDiamond} from "../libraries/LibDiamond.sol";
+import {LibMultisig} from "../libraries/LibMultisig.sol";
 
 contract MultisigFacet {
     AppStorage internal s;
@@ -11,6 +12,10 @@ contract MultisigFacet {
     event ProposalApproved(uint256 indexed proposalId, address indexed approver);
     event ApprovalRevoked(uint256 indexed proposalId, address indexed approver);
     event ProposalExecuted(uint256 indexed proposalId);
+    event OwnerAdded(address indexed owner);
+    event OwnerRemoved(address indexed owner);
+    event OwnerReplaced(address indexed oldOwner, address indexed newOwner);
+    event RequirementChanged(uint256 required);
 
     function initMultisig(address[] calldata _owners, uint256 _required) external {
         require(s.multisigOwners.length == 0, "Multisig: already initialized");
@@ -109,5 +114,57 @@ contract MultisigFacet {
 
     function getRequired() external view returns (uint256) {
         return s.required;
+    }
+
+    function addOwner(address _owner) external {
+        LibMultisig.enforceIsMultisig();
+        require(_owner != address(0), "Multisig: zero address");
+        require(!s.isMultisigOwner[_owner], "Multisig: already owner");
+        s.isMultisigOwner[_owner] = true;
+        s.multisigOwners.push(_owner);
+        emit OwnerAdded(_owner);
+    }
+
+    function removeOwner(address _owner) external {
+        LibMultisig.enforceIsMultisig();
+        require(s.isMultisigOwner[_owner], "Multisig: not owner");
+        require(s.multisigOwners.length > 1, "Multisig: cannot remove last owner");
+
+        s.isMultisigOwner[_owner] = false;
+        uint256 len = s.multisigOwners.length;
+        for (uint256 i; i < len; i++) {
+            if (s.multisigOwners[i] == _owner) {
+                s.multisigOwners[i] = s.multisigOwners[len - 1];
+                s.multisigOwners.pop();
+                break;
+            }
+        }
+        require(s.required <= s.multisigOwners.length, "Multisig: requirement too high");
+        emit OwnerRemoved(_owner);
+    }
+
+    function replaceOwner(address _oldOwner, address _newOwner) external {
+        LibMultisig.enforceIsMultisig();
+        require(s.isMultisigOwner[_oldOwner], "Multisig: not owner");
+        require(_newOwner != address(0), "Multisig: zero address");
+        require(!s.isMultisigOwner[_newOwner], "Multisig: already owner");
+
+        s.isMultisigOwner[_oldOwner] = false;
+        s.isMultisigOwner[_newOwner] = true;
+        uint256 len = s.multisigOwners.length;
+        for (uint256 i; i < len; i++) {
+            if (s.multisigOwners[i] == _oldOwner) {
+                s.multisigOwners[i] = _newOwner;
+                break;
+            }
+        }
+        emit OwnerReplaced(_oldOwner, _newOwner);
+    }
+
+    function changeRequirement(uint256 _required) external {
+        LibMultisig.enforceIsMultisig();
+        require(_required > 0 && _required <= s.multisigOwners.length, "Multisig: invalid requirement");
+        s.required = _required;
+        emit RequirementChanged(_required);
     }
 }

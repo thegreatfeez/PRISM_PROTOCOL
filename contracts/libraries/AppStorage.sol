@@ -45,6 +45,7 @@ struct AppStorage {
     string nftSymbol;
     string baseURI;
     uint256 totalNFTSupply;
+    uint256 totalNFTBurned;
 
     // ── ERC20 ────────────────────────────────
     mapping(address => uint256) erc20Balances;

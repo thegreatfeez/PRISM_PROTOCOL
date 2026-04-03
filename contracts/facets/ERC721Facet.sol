@@ -90,7 +90,7 @@ contract ERC721Facet is IERC721 {
     }
 
     function totalSupply() external view returns (uint256) {
-        return s.totalNFTSupply;
+        return s.totalNFTSupply - s.totalNFTBurned;
     }
 
     function name() external view returns (string memory) {
