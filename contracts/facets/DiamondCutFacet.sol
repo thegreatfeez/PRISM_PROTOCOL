@@ -7,9 +7,13 @@ pragma solidity ^0.8.0;
 /******************************************************************************/
 
 import {IDiamondCut} from "../interfaces/IDiamondCut.sol";
+import {AppStorage} from "../libraries/AppStorage.sol";
 import {LibDiamond} from "../libraries/LibDiamond.sol";
+import {LibMultisig} from "../libraries/LibMultisig.sol";
 
 contract DiamondCutFacet is IDiamondCut {
+    AppStorage internal s;
+
     /// @notice Add/replace/remove any number of functions and optionally execute
     ///         a function with delegatecall
     /// @param _diamondCut Contains the facet addresses and function selectors
@@ -17,7 +21,11 @@ contract DiamondCutFacet is IDiamondCut {
     /// @param _calldata A function call, including function selector and arguments
     ///                  _calldata is executed with delegatecall on _init
     function diamondCut(FacetCut[] calldata _diamondCut, address _init, bytes calldata _calldata) external override {
-        LibDiamond.enforceIsContractOwner();
+        if (s.multisigOwners.length == 0) {
+            LibDiamond.enforceIsContractOwner();
+        } else {
+            LibMultisig.enforceIsMultisig();
+        }
         LibDiamond.diamondCut(_diamondCut, _init, _calldata);
     }
 }

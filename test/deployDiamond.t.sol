@@ -6,61 +6,91 @@ import "../contracts/facets/DiamondCutFacet.sol";
 import "../contracts/facets/DiamondLoupeFacet.sol";
 import "../contracts/facets/OwnershipFacet.sol";
 import "../contracts/facets/ERC721Facet.sol";
+import "../contracts/facets/ERC20Facet.sol";
+import "../contracts/facets/MultisigFacet.sol";
+import "../contracts/facets/SVGFacet.sol";
 import "../contracts/Diamond.sol";
 import "../contracts/libraries/LibDiamond.sol";
 
-import "./helpers/DiamondUpgradeHelper.sol";
+import "./helpers/TestHelpers.sol";
 
-contract DiamondDeployer is DiamondUpgradeHelper {
-    //contract types of facets to be deployed
+contract DiamondDeployer is TestHelpers {
     Diamond diamond;
     DiamondCutFacet dCutFacet;
     DiamondLoupeFacet dLoupe;
     OwnershipFacet ownerF;
     ERC721Facet erc721F;
+    ERC20Facet erc20F;
+    MultisigFacet multisigF;
+    SVGFacet svgF;
+
     address timidan;
     address magicEden;
     address josh;
-    address youngancient; 
+    address youngancient;
 
-    function setUp() public {
-        string memory baseURI = "https://ipfs.io/ipfs/QmUpZ6KU4WJZXQ9seWB9VdXAjXQcpDCCwYvnxcHinmdCvD";
-        timidan = makeAddr("timidan");
-        magicEden = makeAddr("magiceden");
-        josh = makeAddr("josh");
-        youngancient = makeAddr("youngancient");
+ function setUp() public {
+    timidan      = makeAddr("timidan");
+    magicEden    = makeAddr("magiceden");
+    josh         = makeAddr("josh");
+    youngancient = makeAddr("youngancient");
 
-        //deploy facets
-        dCutFacet = new DiamondCutFacet();
-        diamond = new Diamond(address(this), address(dCutFacet));
-        dLoupe = new DiamondLoupeFacet();
-        ownerF = new OwnershipFacet();
-        erc721F = new ERC721Facet();
+    dCutFacet = new DiamondCutFacet();
+    diamond   = new Diamond(address(this), address(dCutFacet));
+    dLoupe    = new DiamondLoupeFacet();
+    ownerF    = new OwnershipFacet();
+    erc721F   = new ERC721Facet();
+    erc20F    = new ERC20Facet();
+    multisigF = new MultisigFacet();
+    svgF      = new SVGFacet();
 
-       
-        IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](3);
-        cuts[0] = buildAddCutByName(address(dLoupe), "DiamondLoupeFacet");
-        cuts[1] = buildAddCutByName(address(ownerF), "OwnershipFacet");
-        cuts[2] = buildAddCutByName(address(erc721F), "ERC721Facet");
+    IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](4);
+    cuts[0] = buildAddCutByName(address(dLoupe),    "DiamondLoupeFacet");
+    cuts[1] = buildAddCutByName(address(ownerF),    "OwnershipFacet");
+    cuts[2] = buildAddCutByName(address(erc721F),   "ERC721Facet");
+    cuts[3] = buildAddCutByName(address(multisigF), "MultisigFacet");
 
-        executeDiamondCut(IDiamondCut(address(diamond)), cuts, address(0), "");
+    executeDiamondCut(IDiamondCut(address(diamond)), cuts, address(0), "");
 
-        //call a function
-        DiamondLoupeFacet(address(diamond)).facetAddresses();
-        ERC721Facet(address(diamond)).initialize("Panda", "PDA", baseURI);
-    }
+    IDiamondCut.FacetCut[] memory svgCut = new IDiamondCut.FacetCut[](1);
+    bytes4[] memory svgSelectors = new bytes4[](1);
+    svgSelectors[0] = SVGFacet.tokenURI.selector;
+    svgCut[0] = IDiamondCut.FacetCut({
+        facetAddress: address(svgF),
+        action: IDiamondCut.FacetCutAction.Replace,
+        functionSelectors: svgSelectors
+    });
+    executeDiamondCut(IDiamondCut(address(diamond)), svgCut, address(0), "");
 
-    function testMintNft() public{
-        ERC721Facet(address(diamond)).mint(timidan);
+    // initialize multisig first — uses LibDiamond.enforceIsContractOwner as bootstrap
+    address[] memory owners = new address[](1);
+    owners[0] = address(this);
+    MultisigFacet(address(diamond)).initMultisig(owners, 1);
+
+    // now everything privileged goes through multisig
+    _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.initialize.selector, "Panda", "PDA"));
+}
+
+    function testMintNft() public {
+        _warpToWallClock();
+        _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.mint.selector, timidan));
         assertEq(ERC721Facet(address(diamond)).balanceOf(timidan), 1);
 
-        string memory uri = ERC721Facet(address(diamond)).tokenURI(1);
-        assertEq(uri, "https://ipfs.io/ipfs/QmUpZ6KU4WJZXQ9seWB9VdXAjXQcpDCCwYvnxcHinmdCvD");
+        string memory uri = SVGFacet(address(diamond)).tokenURI(1);
+        _writeTokenSvg(address(diamond), 1);
+        assertTrue(
+            bytes(uri).length > 0,
+            "tokenURI should not be empty"
+        );
+        assertEq(
+            _substring(uri, 0, 29),
+            "data:application/json;base64,"
+        );
     }
 
     function testMintRevertsForNonOwner() public {
         vm.prank(timidan);
-        vm.expectRevert(LibDiamond.NotDiamondOwner.selector);
+        vm.expectRevert("Multisig: not authorized");
         ERC721Facet(address(diamond)).mint(timidan);
     }
 
@@ -73,11 +103,11 @@ contract DiamondDeployer is DiamondUpgradeHelper {
         vm.expectRevert("ERC721: token does not exist");
         ERC721Facet(address(diamond)).ownerOf(1);
         vm.expectRevert("ERC721: token does not exist");
-        ERC721Facet(address(diamond)).tokenURI(1);
+        SVGFacet(address(diamond)).tokenURI(1);
     }
 
     function testApproveAndTransferFromByApproved() public {
-        ERC721Facet(address(diamond)).mint(timidan);
+        _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.mint.selector, timidan));
 
         vm.prank(timidan);
         ERC721Facet(address(diamond)).approve(josh, 1);
@@ -92,7 +122,7 @@ contract DiamondDeployer is DiamondUpgradeHelper {
     }
 
     function testApproveRevertsForNonOwnerOrOperator() public {
-        ERC721Facet(address(diamond)).mint(timidan);
+        _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.mint.selector, timidan));
 
         vm.prank(josh);
         vm.expectRevert("ERC721: caller is not owner nor approved for all");
@@ -100,7 +130,7 @@ contract DiamondDeployer is DiamondUpgradeHelper {
     }
 
     function testSetApprovalForAllAndOperatorTransfer() public {
-        ERC721Facet(address(diamond)).mint(timidan);
+        _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.mint.selector, timidan));
 
         vm.prank(timidan);
         ERC721Facet(address(diamond)).setApprovalForAll(magicEden, true);
@@ -112,7 +142,7 @@ contract DiamondDeployer is DiamondUpgradeHelper {
     }
 
     function testTransferFromRevertsOnBadFromOrTo() public {
-        ERC721Facet(address(diamond)).mint(timidan);
+        _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.mint.selector, timidan));
 
         vm.expectRevert("ERC721: transfer from incorrect owner");
         ERC721Facet(address(diamond)).transferFrom(josh, timidan, 1);
@@ -129,7 +159,28 @@ contract DiamondDeployer is DiamondUpgradeHelper {
 
     function testInitializeOnlyOnce() public {
         vm.expectRevert("ERC721: already initialized");
-        ERC721Facet(address(diamond)).initialize("Again", "AGN", "ipfs://example");
+        ERC721Facet(address(diamond)).initialize("Again", "AGN");
+    }
+
+    function testBatchMintFour() public {
+        _warpToWallClock();
+        address[] memory recipients = new address[](4);
+        recipients[0] = timidan;
+        recipients[1] = magicEden;
+        recipients[2] = josh;
+        recipients[3] = youngancient;
+
+        _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.batchMint.selector, recipients));
+
+        assertEq(ERC721Facet(address(diamond)).balanceOf(timidan), 1);
+        assertEq(ERC721Facet(address(diamond)).balanceOf(magicEden), 1);
+        assertEq(ERC721Facet(address(diamond)).balanceOf(josh), 1);
+        assertEq(ERC721Facet(address(diamond)).balanceOf(youngancient), 1);
+
+        _writeTokenSvg(address(diamond), 1);
+        _writeTokenSvg(address(diamond), 2);
+        _writeTokenSvg(address(diamond), 3);
+        _writeTokenSvg(address(diamond), 4);
     }
 
 }
