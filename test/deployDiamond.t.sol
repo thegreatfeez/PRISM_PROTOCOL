@@ -12,6 +12,7 @@ import "../contracts/facets/BorrowFacet.sol";
 import "../contracts/facets/MarketplaceFacet.sol";
 import "../contracts/facets/MultisigFacet.sol";
 import "../contracts/facets/SVGFacet.sol";
+import "../contracts/facets/StakingFacet.sol";
 import "../contracts/Diamond.sol";
 import "../contracts/libraries/LibDiamond.sol";
 
@@ -26,6 +27,7 @@ contract DiamondDeployer is TestHelpers {
     ERC20Facet erc20F;
     BorrowFacet borrowF;
     MarketplaceFacet marketF;
+    StakingFacet stakingF;
     MultisigFacet multisigF;
     SVGFacet svgF;
 
@@ -33,6 +35,16 @@ contract DiamondDeployer is TestHelpers {
     address magicEden;
     address josh;
     address youngancient;
+
+    function _durations() internal pure returns (uint256[] memory d) {
+        d = new uint256[](1);
+        d[0] = 7 days;
+    }
+
+    function _rewardBps() internal pure returns (uint256[] memory r) {
+        r = new uint256[](1);
+        r[0] = 8000;
+    }
 
  function setUp() public {
     timidan      = makeAddr("timidan");
@@ -48,6 +60,7 @@ contract DiamondDeployer is TestHelpers {
     erc20F    = new ERC20Facet();
     borrowF   = new BorrowFacet();
     marketF   = new MarketplaceFacet();
+    stakingF  = new StakingFacet();
     multisigF = new MultisigFacet();
     svgF      = new SVGFacet();
 
@@ -60,10 +73,11 @@ contract DiamondDeployer is TestHelpers {
     executeDiamondCut(IDiamondCut(address(diamond)), cuts, address(0), "");
 
     IDiamondLoupe loupe = IDiamondLoupe(address(diamond));
-    IDiamondCut.FacetCut[] memory addCuts = new IDiamondCut.FacetCut[](3);
+    IDiamondCut.FacetCut[] memory addCuts = new IDiamondCut.FacetCut[](4);
     addCuts[0] = buildAddMissingCutByName(loupe, address(erc20F), "ERC20Facet");
     addCuts[1] = buildAddCutByName(address(borrowF), "BorrowFacet");
     addCuts[2] = buildAddCutByName(address(marketF), "MarketplaceFacet");
+    addCuts[3] = buildAddCutByName(address(stakingF), "StakingFacet");
     executeDiamondCut(IDiamondCut(address(diamond)), addCuts, address(0), "");
 
     IDiamondCut.FacetCut[] memory svgCut = new IDiamondCut.FacetCut[](1);
@@ -202,13 +216,16 @@ contract DiamondDeployer is TestHelpers {
 
         _multisigCall(address(diamond), abi.encodeWithSelector(ERC20Facet.initERC20.selector, "Prism", "PRM", 18));
         _multisigCall(address(diamond), abi.encodeWithSelector(ERC20Facet.mintERC20.selector, magicEden, 1_000 ether));
-        _multisigCall(address(diamond), abi.encodeWithSelector(BorrowFacet.setBorrowFeeRate.selector, 0));
+        _multisigCall(address(diamond), abi.encodeWithSelector(BorrowFacet.setERC20PerEth.selector, 100 ether));
+        _multisigCall(address(diamond), abi.encodeWithSelector(StakingFacet.setStakeDurations.selector, _durations(), _rewardBps()));
+        _multisigCall(address(diamond), abi.encodeWithSelector(StakingFacet.setRewardSplit.selector, 8000));
 
         vm.prank(timidan);
-        BorrowFacet(address(diamond)).listForBorrow(1, 100 ether, 7 days);
+        StakingFacet(address(diamond)).stake(1, 7 days, 100 ether);
 
+        vm.deal(magicEden, 10 ether);
         vm.prank(magicEden);
-        BorrowFacet(address(diamond)).borrow(1, 7 days);
+        BorrowFacet(address(diamond)).borrow{value: 2 ether}(1, 7 days);
 
         vm.warp(block.timestamp + 7 days + 1);
         vm.prank(timidan);
@@ -222,6 +239,69 @@ contract DiamondDeployer is TestHelpers {
         vm.prank(magicEden);
         vm.expectRevert("Marketplace: not token owner");
         MarketplaceFacet(address(diamond)).listNFT(1, 1 ether);
+    }
+
+    function testBorrowFeeAndCollateralFlow() public {
+        _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.mint.selector, timidan));
+        _multisigCall(address(diamond), abi.encodeWithSelector(ERC20Facet.initERC20.selector, "Prism", "PRM", 18));
+        _multisigCall(address(diamond), abi.encodeWithSelector(ERC20Facet.mintERC20.selector, magicEden, 1_000 ether));
+        _multisigCall(address(diamond), abi.encodeWithSelector(BorrowFacet.setERC20PerEth.selector, 100 ether));
+        _multisigCall(address(diamond), abi.encodeWithSelector(StakingFacet.setStakeDurations.selector, _durations(), _rewardBps()));
+        _multisigCall(address(diamond), abi.encodeWithSelector(StakingFacet.setRewardSplit.selector, 8000));
+
+        vm.prank(timidan);
+        StakingFacet(address(diamond)).stake(1, 7 days, 100 ether);
+
+        uint256 borrowerErc20Before = ERC20Facet(address(diamond)).erc20BalanceOf(magicEden);
+        uint256 stakerErc20Before = ERC20Facet(address(diamond)).erc20BalanceOf(timidan);
+        uint256 protocolErc20Before = ERC20Facet(address(diamond)).erc20BalanceOf(address(diamond));
+
+        vm.deal(magicEden, 10 ether);
+        vm.prank(magicEden);
+        BorrowFacet(address(diamond)).borrow{value: 2 ether}(1, 7 days);
+
+        uint256 borrowerErc20After = ERC20Facet(address(diamond)).erc20BalanceOf(magicEden);
+        uint256 stakerErc20After = ERC20Facet(address(diamond)).erc20BalanceOf(timidan);
+        uint256 protocolErc20After = ERC20Facet(address(diamond)).erc20BalanceOf(address(diamond));
+
+        assertEq(borrowerErc20Before - borrowerErc20After, 5 ether);
+        assertEq(stakerErc20After - stakerErc20Before, 4 ether);
+        assertEq(protocolErc20After - protocolErc20Before, 1 ether);
+        assertEq(address(diamond).balance, 2 ether);
+
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(magicEden);
+        BorrowFacet(address(diamond)).returnNFT(1);
+
+        assertEq(address(diamond).balance, 0);
+        assertEq(ERC20Facet(address(diamond)).erc20BalanceOf(magicEden), borrowerErc20After);
+    }
+
+    function testUndercollateralizedLiquidation() public {
+        _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.mint.selector, timidan));
+        _multisigCall(address(diamond), abi.encodeWithSelector(ERC20Facet.initERC20.selector, "Prism", "PRM", 18));
+        _multisigCall(address(diamond), abi.encodeWithSelector(ERC20Facet.mintERC20.selector, magicEden, 1_000 ether));
+        _multisigCall(address(diamond), abi.encodeWithSelector(BorrowFacet.setERC20PerEth.selector, 100 ether));
+        _multisigCall(address(diamond), abi.encodeWithSelector(StakingFacet.setStakeDurations.selector, _durations(), _rewardBps()));
+        _multisigCall(address(diamond), abi.encodeWithSelector(StakingFacet.setRewardSplit.selector, 8000));
+
+        vm.prank(timidan);
+        StakingFacet(address(diamond)).stake(1, 7 days, 100 ether);
+
+        vm.deal(magicEden, 10 ether);
+        vm.prank(magicEden);
+        BorrowFacet(address(diamond)).borrow{value: 2 ether}(1, 7 days);
+
+        _multisigCall(address(diamond), abi.encodeWithSelector(BorrowFacet.setERC20PerEth.selector, 50 ether));
+
+        uint256 stakerEthBefore = timidan.balance;
+
+        vm.prank(timidan);
+        BorrowFacet(address(diamond)).liquidate(1);
+
+        assertEq(timidan.balance - stakerEthBefore, 1.6 ether);
+        assertEq(address(diamond).balance, 0.4 ether);
+        assertEq(ERC721Facet(address(diamond)).totalSupply(), 0);
     }
 
 }

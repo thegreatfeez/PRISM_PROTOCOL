@@ -111,14 +111,13 @@ The protocol has its own ERC20 token that powers everything inside it.
 You use it to:
 - Buy NFTs on the marketplace
 - Pay borrow fees when renting an asset
-- Post collateral when borrowing
 - Receive staking rewards
 
 You earn it by:
 - Staking your NFTs and earning from borrow fees
 - Selling your NFTs on the marketplace
 
-The token is deflationary — a portion of every marketplace sale and borrow fee is permanently burned, reducing total supply over time. As the protocol grows and more assets are borrowed and traded, the burn rate increases.
+The token is deflationary — a portion of every marketplace sale is permanently burned, reducing total supply over time. Borrow fees are split between stakers and the protocol.
 
 ---
 
@@ -165,13 +164,13 @@ Staking turns your idle gaming assets into income-generating instruments. When y
 
 1. You choose a staking duration — 30, 60, or 90 days
 2. Your NFT is held securely in the protocol contract
-3. Your NFT appears in the borrow marketplace with your chosen collateral requirement
+3. Your NFT appears in the borrow marketplace with your chosen price
 4. Every time someone borrows your NFT, you receive 80% of the borrow fee instantly
 5. When the staking period ends and no active borrow exists, you get your NFT back
 
-**Longer commitments earn more.** A 90-day stake earns a higher share of borrow fees than a 30-day stake, rewarding long-term participants.
+**Stake duration only affects availability.** Your reward share stays at 80% of borrow fees regardless of duration.
 
-**Important:** Your NFT is safe in the contract. The protocol cannot move or sell it — only return it to you when the staking period ends, or send it temporarily to a borrower who has posted sufficient collateral.
+**Important:** Your NFT is safe in the contract. The protocol cannot move or sell it — only return it to you when the staking period ends, or send it temporarily to a borrower who has posted sufficient collateral in ETH.
 
 ---
 
@@ -183,16 +182,17 @@ Not every player needs to own a rare asset permanently. Prism Protocol lets you 
 
 1. Browse the borrow marketplace and find an asset you need
 2. Check the available duration — you can only borrow for the time remaining in the staker's lock period
-3. Post the required collateral plus a small borrow fee
+3. Post ETH collateral plus a small borrow fee paid in ERC20
 4. The NFT transfers to your wallet — you have full ownership for the duration
 5. Return the NFT before the deadline to receive your collateral back
 
-**What happens if you miss the deadline:**
+**What happens if you miss the deadline or become undercollateralized:**
 - The NFT is burned permanently
 - You lose your collateral permanently
-- The staker receives your collateral as compensation
+- The staker receives 80% of the collateral
+- The protocol receives 20% of the collateral
 
-This means collateral should be set close to the actual value of the asset. It protects stakers and ensures borrowers have a real incentive to return on time.
+This means the ERC20 price should reflect the asset’s market value. It protects stakers and ensures borrowers have a real incentive to return on time.
 
 ---
 
@@ -253,7 +253,7 @@ Prism Protocol is governed by a multisig — a group of trusted addresses that m
 
 **What governance controls:**
 - Minting new asset batches
-- Setting borrow fee rates
+- Setting the ERC20/ETH collateral rate
 - Setting marketplace platform fees
 - Configuring staking duration tiers and reward splits
 - Upgrading the protocol (adding or replacing logic)
@@ -280,11 +280,11 @@ No single person can act alone. Every change requires consensus.
 
 **Step 1 — Choose your staking duration**
 
-Decide how long you want to stake. Options are 30, 60, or 90 days. Longer periods earn a higher share of borrow fees. You cannot unstake early.
+Decide how long you want to stake. Options are 30, 60, or 90 days. You cannot unstake early.
 
-**Step 2 — Set your collateral requirement**
+**Step 2 — Set your NFT price**
 
-This is the amount a borrower must post to rent your NFT. Set it close to the market value of your asset — this is your protection if a borrower misses their deadline and the NFT is burned.
+This is the ERC20 price used to calculate the borrow fee and ETH collateral. Collateral is always set to 200% of this price (overcollateralized), and liquidation can happen if collateral falls below 150%.
 
 **Step 3 — Stake**
 
@@ -300,20 +300,20 @@ When your staking period ends and no active borrow exists, call `unstake(tokenId
 
 **If a borrower misses their deadline:**
 
-Call `liquidate(tokenId)`. You receive the borrower's collateral in full and the NFT is burned. This is your insurance.
+Call `liquidate(tokenId)`. You receive 80% of the borrower's collateral and the NFT is burned. The protocol receives 20%.
 
 ---
 
 ### Guide for Borrowers
 
 **Before you start:**
-- You must have enough ERC20 to cover collateral plus borrow fee
+- You must have enough ETH for collateral and ERC20 for the borrow fee
 - Check the deadline carefully — missing it costs you your collateral
 
 **Step 1 — Browse the marketplace**
 
 Look through available borrow listings. Each listing shows:
-- Required collateral
+- Required ETH collateral
 - Borrow fee rate
 - Time remaining (maximum duration you can borrow for)
 
@@ -323,7 +323,7 @@ You can borrow for any duration up to the remaining time in the staker's lock pe
 
 **Step 3 — Borrow**
 
-Call `borrow(tokenId, duration)`. Your ERC20 collateral and fee are deducted. The NFT arrives in your wallet.
+Call `borrow(tokenId, duration)` with ETH collateral attached. Your ERC20 borrow fee is deducted. The NFT arrives in your wallet.
 
 **Step 4 — Use the asset in-game**
 
@@ -333,9 +333,9 @@ The NFT is in your wallet. You have full ERC721 ownership for the duration. You 
 
 Call `returnNFT(tokenId)` before your deadline. The NFT goes back to the protocol, and your collateral is refunded in full.
 
-**If you miss the deadline:**
+**If you miss the deadline or collateral drops below 150%:**
 
-Your NFT is burned and your collateral is gone permanently. The original staker receives it as compensation. Only miss the deadline intentionally if losing the NFT is worth less than the collateral you posted.
+Your NFT is burned and your collateral is gone permanently. 80% goes to the staker and 20% to the protocol. Only miss the deadline intentionally if losing the NFT is worth less than the collateral you posted.
 
 ---
 
@@ -358,6 +358,9 @@ Your NFT is burned and your collateral is gone permanently. The original staker 
 
 **Platform fee:**
 A small percentage of every sale is burned. This is deducted from the buyer's payment before the seller receives proceeds.
+
+**Collateral and fees:**
+Collateral is always posted in ETH and must be 200% of the NFT’s ERC20 price. The borrow fee is always 5% of the NFT price and is paid in ERC20. Borrow fees are never refunded.
 
 ---
 
@@ -421,10 +424,10 @@ Your NFTs, balances, staking records, and borrow positions all live at the Diamo
 | Buy NFT | Full listing price | Seller gets proceeds minus platform fee |
 | Platform fee on sale | % of sale price | Burned permanently |
 | Stake NFT | Lock NFT for X days | Earns 80% of all borrow fees on that NFT |
-| Borrow NFT | Collateral + borrow fee | Collateral returned on time, fee split 80/20 |
+| Borrow NFT | ETH collateral + ERC20 borrow fee | Collateral returned on time, fee split 80/20 |
 | Return NFT on time | Nothing | Full collateral refunded |
-| Miss borrow deadline | Collateral forfeited | NFT burned, staker receives collateral |
-| Liquidate late borrower | Gas only | NFT burned, staker receives collateral |
+| Miss borrow deadline | Collateral forfeited | NFT burned, 80% to staker, 20% to protocol |
+| Liquidate undercollateralized borrower | Gas only | NFT burned, 80% to staker, 20% to protocol |
 
 ---
 
@@ -437,6 +440,14 @@ Prism Protocol is designed to grow. The architecture makes adding new features s
 The current multisig model is effective for a small founding team but does not scale to a decentralized community. The next major milestone is introducing a governance token.
 
 **How it will work:**
+
+### Multi-Collateral Borrowing
+
+Future versions will support additional collateral assets beyond ETH.
+
+### NFT Rarity
+
+Introduce rarity tiers that influence artwork traits and marketplace dynamics.
 
 - Governance token holders can vote on protocol proposals
 - Major decisions — like batch minting new asset supplies — will require a community vote before the multisig can execute

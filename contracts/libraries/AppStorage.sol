@@ -12,13 +12,13 @@ struct MultisigProposal {
 struct BorrowInfo {
     address borrower;
     address lender;
-    uint256 collateral;
+    uint256 collateralEth;
     uint256 deadline;
 }
 
 struct BorrowListing {
     address owner;
-    uint256 requiredCollateral;
+    uint256 price;
     uint256 duration;
     bool active;
 }
@@ -71,7 +71,7 @@ struct AppStorage {
     // ── Borrowing ────────────────────────────
     mapping(uint256 => BorrowInfo) borrows;
     mapping(uint256 => BorrowListing) borrowListings;
-    uint256 borrowFeeRate;
+    uint256 erc20PerEth;
 
     // ── Marketplace ──────────────────────────
     mapping(uint256 => Listing) listings;

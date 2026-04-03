@@ -39,13 +39,13 @@ contract StakingFacet {
         s.stakerRewardBps = _stakerBps;
     }
 
-    function stake(uint256 _tokenId, uint256 _duration, uint256 _requiredCollateral) external {
+    function stake(uint256 _tokenId, uint256 _duration, uint256 _price) external {
         require(s.tokenIdToOwner[_tokenId] == msg.sender, "Staking: not token owner");
         require(s.stakes[_tokenId].staker == address(0), "Staking: already staked");
         require(s.borrows[_tokenId].borrower == address(0), "Staking: token is borrowed");
         require(!s.listings[_tokenId].active, "Staking: listed for sale");
         require(!s.borrowListings[_tokenId].active, "Staking: already listed");
-        require(_requiredCollateral > 0, "Staking: collateral must be nonzero");
+        require(_price > 0, "Staking: price must be nonzero");
 
         uint256 rewardBps = s.stakeRewardBps[_duration];
         require(rewardBps > 0, "Staking: invalid duration");
@@ -63,7 +63,7 @@ contract StakingFacet {
 
         s.borrowListings[_tokenId] = BorrowListing({
             owner: msg.sender,
-            requiredCollateral: _requiredCollateral,
+            price: _price,
             duration: _duration,
             active: true
         });

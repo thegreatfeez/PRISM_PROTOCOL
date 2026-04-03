@@ -41,6 +41,14 @@ contract ERC20Facet is IERC20 {
         return s.erc20Allowances[_owner][_spender];
     }
 
+    function erc20BalanceOf(address _account) external view returns (uint256) {
+        return s.erc20Balances[_account];
+    }
+
+    function erc20TotalSupply() external view returns (uint256) {
+        return s.totalERC20Supply;
+    }
+
     function transfer(address _to, uint256 _amount) external override returns (bool) {
         LibERC20.transfer(s, msg.sender, _to, _amount);
         return true;
