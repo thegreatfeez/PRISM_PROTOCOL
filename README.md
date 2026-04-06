@@ -10,9 +10,9 @@ The protocol is built for gamers and collectors who want real ownership and real
 
 ## 📋 Table of Contents
 
-- [💎 Prism Protocol](#prism-protocol)
+- [💎 Prism Protocol](#-prism-protocol)
   - [📋 Table of Contents](#-table-of-contents)
-  - [🌐 What is Prism Protocol?](#what-is-prism-protocol)
+  - [🌐 What is Prism Protocol?](#-what-is-prism-protocol)
   - [🔄 How It Works — The Big Picture](#-how-it-works--the-big-picture)
   - [💰 The Protocol Currency (ERC20)](#-the-protocol-currency-erc20)
   - [🎮 Gaming Assets — The NFTs](#-gaming-assets--the-nfts)
@@ -32,12 +32,12 @@ The protocol is built for gamers and collectors who want real ownership and real
   - [📊 Protocol Economics](#-protocol-economics)
   - [🔭 Future Plans](#-future-plans)
     - [Governance Token](#governance-token)
+    - [Multi-Collateral Borrowing](#multi-collateral-borrowing)
     - [Rental Guilds](#rental-guilds)
     - [Dynamic Borrow Pricing](#dynamic-borrow-pricing)
     - [Cross-Game Compatibility](#cross-game-compatibility)
     - [Reputation System](#reputation-system)
     - [Fractional Ownership](#fractional-ownership)
-    - [On-Chain Trait Upgrades](#on-chain-trait-upgrades)
     - [DAO Treasury Management](#dao-treasury-management)
   - [🚀 Deployment](#-deployment)
     - [Prerequisites](#prerequisites)
@@ -56,6 +56,8 @@ Prism Protocol is an on-chain ecosystem for gaming assets. Think of it as a mark
 Here is what makes it different from other NFT projects:
 
 **Everything is on-chain.** The artwork for every NFT is generated mathematically on the blockchain itself. There are no images stored on external servers. If Ethereum exists, your NFT exists — exactly as it was the day it was minted.
+
+**Verifiable randomness.** Traits and visuals are seeded by Chainlink VRF, so randomness is on-chain and provably fair rather than a local hash.
 
 **Your assets work for you.** Instead of letting your gaming items sit idle in your wallet, you can stake them and earn income every time someone borrows them to play.
 
@@ -148,7 +150,9 @@ This seed drives five visual properties:
 | Shape size | Small and delicate to large and bold |
 | Rotation | The angle the shape sits at |
 
-Because the seed is derived from the token ID, the timestamp, and the recipient address, no two tokens will ever share the same seed — and therefore no two tokens will ever look exactly alike.
+Because the seed is derived from Chainlink VRF, no two tokens will ever share the same seed — and therefore no two tokens will ever look exactly alike.
+
+Each SVG also prints a simple trait label (e.g., `Traits: Attack`, `Traits: Defense`, `Traits: Mage`) directly on the image so it’s visible in wallets and marketplaces.
 
 You can verify this yourself. The image is stored as a base64-encoded SVG directly inside the token metadata. No server required to display it — any wallet or explorer that supports the ERC721 metadata standard will render it correctly.
 
@@ -413,6 +417,8 @@ Your NFTs, balances, staking records, and borrow positions all live at the Diamo
 | **StakingFacet** | Lets NFT holders lock assets for fixed periods to earn income from borrow fees. Manages stake records and reward distribution. |
 | **BorrowFacet** | Lets players rent NFTs for a fixed time by posting collateral. Handles borrow listings, active borrows, returns, and liquidations. |
 | **MarketplaceFacet** | Peer-to-peer NFT trading in ERC20 tokens. Handles listings, purchases, price updates, and cancellations. |
+| **TreasuryFacet** | Secure withdrawals of protocol-held ERC20 and ETH funds, gated by multisig. |
+| **VRFFacet** | Chainlink VRF integration for verifiable randomness used in trait assignment and SVG generation. |
 
 ---
 
@@ -444,10 +450,6 @@ The current multisig model is effective for a small founding team but does not s
 ### Multi-Collateral Borrowing
 
 Future versions will support additional collateral assets beyond ETH.
-
-### NFT Rarity
-
-Introduce rarity tiers that influence artwork traits and marketplace dynamics.
 
 - Governance token holders can vote on protocol proposals
 - Major decisions — like batch minting new asset supplies — will require a community vote before the multisig can execute
@@ -490,10 +492,6 @@ On-chain borrower reputation scores. Borrowers who consistently return on time b
 
 Split ownership of high-value assets across multiple holders. Each holder earns a proportional share of staking rewards. Makes expensive rare assets accessible to more players.
 
-### On-Chain Trait Upgrades
-
-Game mechanics that allow NFT traits to evolve. An asset that has been borrowed many times could develop visual changes reflecting its history. All driven by on-chain data, no off-chain metadata updates.
-
 ### DAO Treasury Management
 
 As the protocol treasury accumulates ERC20 revenue, governance token holders vote on how it is deployed — liquidity provision, buybacks, grants, new asset development funding.
@@ -517,7 +515,7 @@ forge test
 ### Deploy
 
 ```bash
-forge script script/Deploy.s.sol --rpc-url <RPC_URL> --broadcast
+forge script script/DeployDiamond.s.sol --rpc-url <RPC_URL> --broadcast
 ```
 
 ### Deployment order
@@ -529,7 +527,8 @@ forge script script/Deploy.s.sol --rpc-url <RPC_URL> --broadcast
 5. Replace `tokenURI` selector to point at `SVGFacet`
 6. Call `initMultisig(owners, threshold)` directly as deployer
 7. All further actions go through multisig: `initERC20`, `batchMint`, `mintERC20`, `setStakeDurations`, `setBorrowFeeRate`, `setPlatformFee`
-8. Optionally call `transferOwnership(address(0))` to permanently burn bootstrap privilege
+8. Configure VRF via `setReqData` once your coordinator and subscription are ready (and add the diamond as a consumer)
+9. Optionally call `transferOwnership(address(0))` to permanently burn bootstrap privilege
 
 ---
 

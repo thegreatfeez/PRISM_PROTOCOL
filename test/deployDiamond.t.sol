@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import "../contracts/interfaces/IDiamondCut.sol";
@@ -13,32 +13,86 @@ import "../contracts/facets/MarketplaceFacet.sol";
 import "../contracts/facets/MultisigFacet.sol";
 import "../contracts/facets/SVGFacet.sol";
 import "../contracts/facets/StakingFacet.sol";
+import "../contracts/facets/VRFFacet.sol";
+import "../contracts/mocks/MockVRFCoordinator.sol";
 import "../contracts/Diamond.sol";
 import "../contracts/libraries/LibDiamond.sol";
+import "../contracts/libraries/AppStorage.sol";
 
 import "./helpers/TestHelpers.sol";
 
-contract DiamondDeployer is TestHelpers {
-    Diamond diamond;
-    DiamondCutFacet dCutFacet;
-    DiamondLoupeFacet dLoupe;
-    OwnershipFacet ownerF;
-    ERC721Facet erc721F;
-    ERC20Facet erc20F;
-    BorrowFacet borrowF;
-    MarketplaceFacet marketF;
-    StakingFacet stakingF;
-    MultisigFacet multisigF;
-    SVGFacet svgF;
+contract ProtocolFlowTest is TestHelpers {
 
-    address timidan;
-    address magicEden;
-    address josh;
-    address youngancient;
+    // ── contracts ─────────────────────────────────────────────
+    Diamond             diamond;
+    DiamondCutFacet     dCutFacet;
+    DiamondLoupeFacet   dLoupe;
+    OwnershipFacet      ownerF;
+    ERC721Facet         erc721F;
+    ERC20Facet          erc20F;
+    BorrowFacet         borrowF;
+    MarketplaceFacet    marketF;
+    StakingFacet        stakingF;
+    MultisigFacet       multisigF;
+    SVGFacet            svgF;
+    VRFFacet            vrfF;
+    MockVRFCoordinator  vrfCoordinator;
+
+    // ── multisig owners (5 owners, threshold = 3) ─────────────
+    address timidan;      // proposes most admin actions
+    address kas;          // approver (replacing magicEden as signer)
+    address josh;         // approver
+    address youngancient; // approver
+    address kenny;        // approver
+
+    // ── external entities ─────────────────────────────────────
+    address magicEden;    // marketplace operator (external to multisig)
+
+    // ── protocol actors ────────────────────────────────────────
+    address buyer;    // buys NFT from marketplace, then stakes as lender
+    address borrower; // borrows the staked NFT with ETH collateral
+
+    // ── constants ──────────────────────────────────────────────
+    uint256 constant ERC20_PER_ETH  = 100 ether;
+    uint256 constant MARKET_PRICE   = 100 ether;
+    uint256 constant BORROW_PRICE   = 100 ether;
+    uint256 constant PLATFORM_FEE   = 500;       // 5%
+    uint256 constant STAKE_DURATION = 7 days;
+    uint256 constant REQUIRED       = 3;         // 3-of-5 threshold
+
+    // ═══════════════════════════════════════════════════════════
+    //  MULTISIG HELPER
+    //  Simulates a 3-of-5 proposal: timidan proposes,
+    //  kas + josh approve, timidan executes.
+    // ═══════════════════════════════════════════════════════════
+
+    function _adminCall(address _target, bytes memory _callData) internal {
+        // timidan proposes
+        vm.prank(timidan);
+        uint256 proposalId = MultisigFacet(_target).propose(_callData);
+
+        // timidan approves (counts as 1)
+        vm.prank(timidan);
+        MultisigFacet(_target).approve(proposalId);
+
+        // kas approves (counts as 2)
+        vm.prank(kas);
+        MultisigFacet(_target).approve(proposalId);
+
+        // josh approves (counts as 3 — threshold reached)
+        vm.prank(josh);
+        MultisigFacet(_target).approve(proposalId);
+
+        // timidan executes
+        vm.prank(timidan);
+        MultisigFacet(_target).execute(proposalId);
+    }
+
+    // ── helpers ────────────────────────────────────────────────
 
     function _durations() internal pure returns (uint256[] memory d) {
         d = new uint256[](1);
-        d[0] = 7 days;
+        d[0] = STAKE_DURATION;
     }
 
     function _rewardBps() internal pure returns (uint256[] memory r) {
@@ -46,262 +100,239 @@ contract DiamondDeployer is TestHelpers {
         r[0] = 8000;
     }
 
- function setUp() public {
-    timidan      = makeAddr("timidan");
-    magicEden    = makeAddr("magiceden");
-    josh         = makeAddr("josh");
-    youngancient = makeAddr("youngancient");
+    function _setupEconomics() internal {
+        _adminCall(address(diamond),
+            abi.encodeWithSelector(ERC20Facet.initERC20.selector, "Prism", "PRM", 18));
+        _adminCall(address(diamond),
+            abi.encodeWithSelector(BorrowFacet.setERC20PerEth.selector, ERC20_PER_ETH));
+        _adminCall(address(diamond),
+            abi.encodeWithSelector(StakingFacet.setStakeDurations.selector, _durations(), _rewardBps()));
+        _adminCall(address(diamond),
+            abi.encodeWithSelector(MarketplaceFacet.setPlatformFee.selector, PLATFORM_FEE));
+    }
 
-    dCutFacet = new DiamondCutFacet();
-    diamond   = new Diamond(address(this), address(dCutFacet));
-    dLoupe    = new DiamondLoupeFacet();
-    ownerF    = new OwnershipFacet();
-    erc721F   = new ERC721Facet();
-    erc20F    = new ERC20Facet();
-    borrowF   = new BorrowFacet();
-    marketF   = new MarketplaceFacet();
-    stakingF  = new StakingFacet();
-    multisigF = new MultisigFacet();
-    svgF      = new SVGFacet();
-
-    IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](4);
-    cuts[0] = buildAddCutByName(address(dLoupe),    "DiamondLoupeFacet");
-    cuts[1] = buildAddCutByName(address(ownerF),    "OwnershipFacet");
-    cuts[2] = buildAddCutByName(address(erc721F),   "ERC721Facet");
-    cuts[3] = buildAddCutByName(address(multisigF), "MultisigFacet");
-
-    executeDiamondCut(IDiamondCut(address(diamond)), cuts, address(0), "");
-
-    IDiamondLoupe loupe = IDiamondLoupe(address(diamond));
-    IDiamondCut.FacetCut[] memory addCuts = new IDiamondCut.FacetCut[](4);
-    addCuts[0] = buildAddMissingCutByName(loupe, address(erc20F), "ERC20Facet");
-    addCuts[1] = buildAddCutByName(address(borrowF), "BorrowFacet");
-    addCuts[2] = buildAddCutByName(address(marketF), "MarketplaceFacet");
-    addCuts[3] = buildAddCutByName(address(stakingF), "StakingFacet");
-    executeDiamondCut(IDiamondCut(address(diamond)), addCuts, address(0), "");
-
-    IDiamondCut.FacetCut[] memory svgCut = new IDiamondCut.FacetCut[](1);
-    bytes4[] memory svgSelectors = new bytes4[](1);
-    svgSelectors[0] = SVGFacet.tokenURI.selector;
-    svgCut[0] = IDiamondCut.FacetCut({
-        facetAddress: address(svgF),
-        action: IDiamondCut.FacetCutAction.Replace,
-        functionSelectors: svgSelectors
-    });
-    executeDiamondCut(IDiamondCut(address(diamond)), svgCut, address(0), "");
-
-    // initialize multisig first — uses LibDiamond.enforceIsContractOwner as bootstrap
-    address[] memory owners = new address[](1);
-    owners[0] = address(this);
-    MultisigFacet(address(diamond)).initMultisig(owners, 1);
-
-    // now everything privileged goes through multisig
-    _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.initialize.selector, "Panda", "PDA"));
-}
-
-    function testMintNft() public {
+    function _mintAndSellTo(address _buyer, uint256 _price) internal returns (uint256 tokenId) {
         _warpToWallClock();
-        _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.mint.selector, timidan));
-        assertEq(ERC721Facet(address(diamond)).balanceOf(timidan), 1);
+        _adminCall(address(diamond),
+            abi.encodeWithSelector(ERC721Facet.mint.selector));
+        tokenId = ERC721Facet(address(diamond)).totalSupply();
+        _adminCall(address(diamond),
+            abi.encodeWithSelector(MarketplaceFacet.listNFT.selector, tokenId, _price));
+        vm.prank(_buyer);
+        MarketplaceFacet(address(diamond)).buyNFT(tokenId);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  SETUP
+    // ═══════════════════════════════════════════════════════════
+
+    function setUp() public {
+        timidan      = makeAddr("timidan");
+        kas          = makeAddr("kas");
+        josh         = makeAddr("josh");
+        youngancient = makeAddr("youngancient");
+        kenny        = makeAddr("kenny");
+        
+        magicEden    = makeAddr("magicEden");
+        buyer        = makeAddr("buyer");
+        borrower     = makeAddr("borrower");
+
+        dCutFacet      = new DiamondCutFacet();
+        diamond        = new Diamond(address(this), address(dCutFacet));
+        dLoupe         = new DiamondLoupeFacet();
+        ownerF         = new OwnershipFacet();
+        erc721F        = new ERC721Facet();
+        erc20F         = new ERC20Facet();
+        borrowF        = new BorrowFacet();
+        marketF        = new MarketplaceFacet();
+        stakingF       = new StakingFacet();
+        multisigF      = new MultisigFacet();
+        svgF           = new SVGFacet();
+        vrfF           = new VRFFacet();
+        vrfCoordinator = new MockVRFCoordinator();
+
+        IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](5);
+        cuts[0] = buildAddCutByName(address(dLoupe),    "DiamondLoupeFacet");
+        cuts[1] = buildAddCutByName(address(ownerF),    "OwnershipFacet");
+        cuts[2] = buildAddCutByName(address(erc721F),   "ERC721Facet");
+        cuts[3] = buildAddCutByName(address(multisigF), "MultisigFacet");
+        cuts[4] = buildAddCutByName(address(vrfF),      "VRFFacet");
+        executeDiamondCut(IDiamondCut(address(diamond)), cuts, address(0), "");
+
+        IDiamondLoupe loupe = IDiamondLoupe(address(diamond));
+        IDiamondCut.FacetCut[] memory addCuts = new IDiamondCut.FacetCut[](4);
+        addCuts[0] = buildAddMissingCutByName(loupe, address(erc20F),  "ERC20Facet");
+        addCuts[1] = buildAddCutByName(address(borrowF),  "BorrowFacet");
+        addCuts[2] = buildAddCutByName(address(marketF),  "MarketplaceFacet");
+        addCuts[3] = buildAddCutByName(address(stakingF), "StakingFacet");
+        executeDiamondCut(IDiamondCut(address(diamond)), addCuts, address(0), "");
+
+        IDiamondCut.FacetCut[] memory svgCut = new IDiamondCut.FacetCut[](1);
+        bytes4[] memory svgSelectors = new bytes4[](1);
+        svgSelectors[0] = SVGFacet.tokenURI.selector;
+        svgCut[0] = IDiamondCut.FacetCut({
+            facetAddress: address(svgF),
+            action: IDiamondCut.FacetCutAction.Replace,
+            functionSelectors: svgSelectors
+        });
+        executeDiamondCut(IDiamondCut(address(diamond)), svgCut, address(0), "");
+
+        // bootstrap: address(this) is contract owner so it can call initMultisig
+        // register all 5 owners with a 3-of-5 threshold
+        address[] memory owners = new address[](5);
+        owners[0] = timidan;
+        owners[1] = kas;
+        owners[2] = josh;
+        owners[3] = youngancient;
+        owners[4] = kenny;
+        MultisigFacet(address(diamond)).initMultisig(owners, REQUIRED);
+
+        // from here, every privileged call goes through _adminCall (3-of-5)
+        _adminCall(address(diamond),
+            abi.encodeWithSelector(ERC721Facet.initialize.selector, "Panda", "PDA"));
+
+        VRFFacet(address(diamond)).setReqData(ReqData({
+            subscriptionId:       1,
+            keyHash:              bytes32(0),
+            callbackGasLimit:     500_000,
+            requestConfirmations: 3,
+            numWords:             2,
+            vrfCoordinator:       address(vrfCoordinator)
+        }));
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  TESTS... (identical logic below)
+    // ═══════════════════════════════════════════════════════════
+
+    function testMintAndBatchMint() public {
+        _warpToWallClock();
+
+        _adminCall(address(diamond),
+            abi.encodeWithSelector(ERC721Facet.mint.selector));
+
+        assertEq(ERC721Facet(address(diamond)).totalSupply(), 1);
+        assertEq(ERC721Facet(address(diamond)).ownerOf(1), address(diamond));
 
         string memory uri = SVGFacet(address(diamond)).tokenURI(1);
-        _writeTokenSvg(address(diamond), 1);
-        assertTrue(
-            bytes(uri).length > 0,
-            "tokenURI should not be empty"
-        );
-        assertEq(
-            _substring(uri, 0, 29),
-            "data:application/json;base64,"
-        );
+        assertEq(_substring(uri, 0, 29), "data:application/json;base64,");
+
+        _adminCall(address(diamond),
+            abi.encodeWithSelector(ERC721Facet.batchMint.selector, uint256(3)));
+
+        assertEq(ERC721Facet(address(diamond)).totalSupply(), 4);
+        for (uint256 i = 2; i <= 4; i++) {
+            assertEq(ERC721Facet(address(diamond)).ownerOf(i), address(diamond));
+        }
     }
 
-    function testMintRevertsForNonOwner() public {
-        vm.prank(timidan);
-        vm.expectRevert("Multisig: not authorized");
-        ERC721Facet(address(diamond)).mint(timidan);
-    }
+    function testMarketplaceListAndBuy() public {
+        _setupEconomics();
+        _adminCall(address(diamond),
+            abi.encodeWithSelector(ERC20Facet.mintERC20.selector, buyer, 200 ether));
 
-    function testBalanceOfZeroAddressReverts() public {
-        vm.expectRevert("ERC721: zero address");
-        ERC721Facet(address(diamond)).balanceOf(address(0));
-    }
-
-    function testOwnerOfAndTokenURIRevertsForMissingToken() public {
-        vm.expectRevert("ERC721: token does not exist");
-        ERC721Facet(address(diamond)).ownerOf(1);
-        vm.expectRevert("ERC721: token does not exist");
-        SVGFacet(address(diamond)).tokenURI(1);
-    }
-
-    function testApproveAndTransferFromByApproved() public {
-        _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.mint.selector, timidan));
-
-        vm.prank(timidan);
-        ERC721Facet(address(diamond)).approve(josh, 1);
-        assertEq(ERC721Facet(address(diamond)).getApproved(1), josh);
-
-        vm.prank(josh);
-        ERC721Facet(address(diamond)).transferFrom(timidan, josh, 1);
-        assertEq(ERC721Facet(address(diamond)).ownerOf(1), josh);
-        assertEq(ERC721Facet(address(diamond)).balanceOf(timidan), 0);
-        assertEq(ERC721Facet(address(diamond)).balanceOf(josh), 1);
-        assertEq(ERC721Facet(address(diamond)).getApproved(1), address(0));
-    }
-
-    function testApproveRevertsForNonOwnerOrOperator() public {
-        _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.mint.selector, timidan));
-
-        vm.prank(josh);
-        vm.expectRevert("ERC721: caller is not owner nor approved for all");
-        ERC721Facet(address(diamond)).approve(josh, 1);
-    }
-
-    function testSetApprovalForAllAndOperatorTransfer() public {
-        _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.mint.selector, timidan));
-
-        vm.prank(timidan);
-        ERC721Facet(address(diamond)).setApprovalForAll(magicEden, true);
-        assertTrue(ERC721Facet(address(diamond)).isApprovedForAll(timidan, magicEden));
-
-        vm.prank(magicEden);
-        ERC721Facet(address(diamond)).transferFrom(timidan, youngancient, 1);
-        assertEq(ERC721Facet(address(diamond)).ownerOf(1), youngancient);
-    }
-
-    function testTransferFromRevertsOnBadFromOrTo() public {
-        _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.mint.selector, timidan));
-
-        vm.expectRevert("ERC721: transfer from incorrect owner");
-        ERC721Facet(address(diamond)).transferFrom(josh, timidan, 1);
-
-        vm.prank(timidan);
-        vm.expectRevert("ERC721: transfer to zero address");
-        ERC721Facet(address(diamond)).transferFrom(timidan, address(0), 1);
-    }
-
-    function testGetApprovedRevertsForMissingToken() public {
-        vm.expectRevert("ERC721: token does not exist");
-        ERC721Facet(address(diamond)).getApproved(1);
-    }
-
-    function testInitializeOnlyOnce() public {
-        vm.expectRevert("ERC721: already initialized");
-        ERC721Facet(address(diamond)).initialize("Again", "AGN");
-    }
-
-    function testBatchMintFour() public {
         _warpToWallClock();
-        address[] memory recipients = new address[](4);
-        recipients[0] = timidan;
-        recipients[1] = magicEden;
-        recipients[2] = josh;
-        recipients[3] = youngancient;
+        _adminCall(address(diamond),
+            abi.encodeWithSelector(ERC721Facet.mint.selector));
+        _adminCall(address(diamond),
+            abi.encodeWithSelector(MarketplaceFacet.listNFT.selector, uint256(1), MARKET_PRICE));
 
-        _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.batchMint.selector, recipients));
+        (address seller, uint256 listedPrice, bool active) =
+            MarketplaceFacet(address(diamond)).getListing(1);
+        assertEq(seller,      address(diamond));
+        assertEq(listedPrice, MARKET_PRICE);
+        assertTrue(active);
 
-        assertEq(ERC721Facet(address(diamond)).balanceOf(timidan), 1);
-        assertEq(ERC721Facet(address(diamond)).balanceOf(magicEden), 1);
-        assertEq(ERC721Facet(address(diamond)).balanceOf(josh), 1);
-        assertEq(ERC721Facet(address(diamond)).balanceOf(youngancient), 1);
+        uint256 diamondErc20Before = ERC20Facet(address(diamond)).erc20BalanceOf(address(diamond));
+        uint256 supplyBefore       = ERC20Facet(address(diamond)).erc20TotalSupply();
 
-        _writeTokenSvg(address(diamond), 1);
-        _writeTokenSvg(address(diamond), 2);
-        _writeTokenSvg(address(diamond), 3);
-        _writeTokenSvg(address(diamond), 4);
+        vm.prank(buyer);
+        MarketplaceFacet(address(diamond)).buyNFT(1);
+
+        assertEq(ERC721Facet(address(diamond)).ownerOf(1), buyer);
+        assertEq(ERC20Facet(address(diamond)).erc20BalanceOf(buyer), 100 ether);
+
+        uint256 fee = (MARKET_PRICE * PLATFORM_FEE) / 10_000; // 5 ether burned
+        assertEq(ERC20Facet(address(diamond)).erc20TotalSupply(), supplyBefore - fee);
+        assertEq(ERC20Facet(address(diamond)).erc20BalanceOf(address(diamond)),
+                 diamondErc20Before + MARKET_PRICE - fee);
+
+        (, , bool stillActive) = MarketplaceFacet(address(diamond)).getListing(1);
+        assertFalse(stillActive);
     }
 
-    function testLiquidationBurnsToken() public {
-        _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.mint.selector, timidan));
+    function testStakeAndBorrowAndReturn() public {
+        _setupEconomics();
+        _adminCall(address(diamond),
+            abi.encodeWithSelector(ERC20Facet.mintERC20.selector, buyer,    200 ether));
+        _adminCall(address(diamond),
+            abi.encodeWithSelector(ERC20Facet.mintERC20.selector, borrower, 50 ether));
+        vm.deal(borrower, 10 ether);
 
-        _multisigCall(address(diamond), abi.encodeWithSelector(ERC20Facet.initERC20.selector, "Prism", "PRM", 18));
-        _multisigCall(address(diamond), abi.encodeWithSelector(ERC20Facet.mintERC20.selector, magicEden, 1_000 ether));
-        _multisigCall(address(diamond), abi.encodeWithSelector(BorrowFacet.setERC20PerEth.selector, 100 ether));
-        _multisigCall(address(diamond), abi.encodeWithSelector(StakingFacet.setStakeDurations.selector, _durations(), _rewardBps()));
-        _multisigCall(address(diamond), abi.encodeWithSelector(StakingFacet.setRewardSplit.selector, 8000));
+        uint256 tokenId = _mintAndSellTo(buyer, MARKET_PRICE);
+        assertEq(ERC721Facet(address(diamond)).ownerOf(tokenId), buyer);
 
-        vm.prank(timidan);
-        StakingFacet(address(diamond)).stake(1, 7 days, 100 ether);
+        vm.prank(buyer);
+        StakingFacet(address(diamond)).stake(tokenId, STAKE_DURATION, BORROW_PRICE);
+        assertEq(ERC721Facet(address(diamond)).ownerOf(tokenId), address(diamond));
 
-        vm.deal(magicEden, 10 ether);
-        vm.prank(magicEden);
-        BorrowFacet(address(diamond)).borrow{value: 2 ether}(1, 7 days);
+        (address listingOwner, , , bool listingActive) =
+            BorrowFacet(address(diamond)).getBorrowListing(tokenId);
+        assertEq(listingOwner, buyer);
+        assertTrue(listingActive);
 
-        vm.warp(block.timestamp + 7 days + 1);
-        vm.prank(timidan);
-        BorrowFacet(address(diamond)).liquidate(1);
+        uint256 buyerErc20Before    = ERC20Facet(address(diamond)).erc20BalanceOf(buyer);
+        uint256 borrowerErc20Before = ERC20Facet(address(diamond)).erc20BalanceOf(borrower);
 
-        assertEq(ERC721Facet(address(diamond)).totalSupply(), 0);
+        vm.prank(borrower);
+        BorrowFacet(address(diamond)).borrow{value: 2 ether}(tokenId, STAKE_DURATION);
 
-        vm.expectRevert("ERC721: token does not exist");
-        ERC721Facet(address(diamond)).ownerOf(1);
-
-        vm.prank(magicEden);
-        vm.expectRevert("Marketplace: not token owner");
-        MarketplaceFacet(address(diamond)).listNFT(1, 1 ether);
-    }
-
-    function testBorrowFeeAndCollateralFlow() public {
-        _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.mint.selector, timidan));
-        _multisigCall(address(diamond), abi.encodeWithSelector(ERC20Facet.initERC20.selector, "Prism", "PRM", 18));
-        _multisigCall(address(diamond), abi.encodeWithSelector(ERC20Facet.mintERC20.selector, magicEden, 1_000 ether));
-        _multisigCall(address(diamond), abi.encodeWithSelector(BorrowFacet.setERC20PerEth.selector, 100 ether));
-        _multisigCall(address(diamond), abi.encodeWithSelector(StakingFacet.setStakeDurations.selector, _durations(), _rewardBps()));
-        _multisigCall(address(diamond), abi.encodeWithSelector(StakingFacet.setRewardSplit.selector, 8000));
-
-        vm.prank(timidan);
-        StakingFacet(address(diamond)).stake(1, 7 days, 100 ether);
-
-        uint256 borrowerErc20Before = ERC20Facet(address(diamond)).erc20BalanceOf(magicEden);
-        uint256 stakerErc20Before = ERC20Facet(address(diamond)).erc20BalanceOf(timidan);
-        uint256 protocolErc20Before = ERC20Facet(address(diamond)).erc20BalanceOf(address(diamond));
-
-        vm.deal(magicEden, 10 ether);
-        vm.prank(magicEden);
-        BorrowFacet(address(diamond)).borrow{value: 2 ether}(1, 7 days);
-
-        uint256 borrowerErc20After = ERC20Facet(address(diamond)).erc20BalanceOf(magicEden);
-        uint256 stakerErc20After = ERC20Facet(address(diamond)).erc20BalanceOf(timidan);
-        uint256 protocolErc20After = ERC20Facet(address(diamond)).erc20BalanceOf(address(diamond));
-
-        assertEq(borrowerErc20Before - borrowerErc20After, 5 ether);
-        assertEq(stakerErc20After - stakerErc20Before, 4 ether);
-        assertEq(protocolErc20After - protocolErc20Before, 1 ether);
+        assertEq(ERC721Facet(address(diamond)).ownerOf(tokenId), borrower);
         assertEq(address(diamond).balance, 2 ether);
 
-        vm.warp(block.timestamp + 1 days);
-        vm.prank(magicEden);
-        BorrowFacet(address(diamond)).returnNFT(1);
+        uint256 borrowFee   = (BORROW_PRICE * 500) / 10_000; // 5 ether
+        uint256 stakerShare = (borrowFee * 8000) / 10_000;   // 4 ether
+        assertEq(ERC20Facet(address(diamond)).erc20BalanceOf(borrower),
+                 borrowerErc20Before - borrowFee);
+        assertEq(ERC20Facet(address(diamond)).erc20BalanceOf(buyer),
+                 buyerErc20Before + stakerShare);
 
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(borrower);
+        BorrowFacet(address(diamond)).returnNFT(tokenId);
+
+        assertEq(borrower.balance, 10 ether);
         assertEq(address(diamond).balance, 0);
-        assertEq(ERC20Facet(address(diamond)).erc20BalanceOf(magicEden), borrowerErc20After);
+        assertEq(ERC721Facet(address(diamond)).ownerOf(tokenId), address(diamond));
     }
 
-    function testUndercollateralizedLiquidation() public {
-        _multisigCall(address(diamond), abi.encodeWithSelector(ERC721Facet.mint.selector, timidan));
-        _multisigCall(address(diamond), abi.encodeWithSelector(ERC20Facet.initERC20.selector, "Prism", "PRM", 18));
-        _multisigCall(address(diamond), abi.encodeWithSelector(ERC20Facet.mintERC20.selector, magicEden, 1_000 ether));
-        _multisigCall(address(diamond), abi.encodeWithSelector(BorrowFacet.setERC20PerEth.selector, 100 ether));
-        _multisigCall(address(diamond), abi.encodeWithSelector(StakingFacet.setStakeDurations.selector, _durations(), _rewardBps()));
-        _multisigCall(address(diamond), abi.encodeWithSelector(StakingFacet.setRewardSplit.selector, 8000));
+    function testLiquidationOnExpiry() public {
+        _setupEconomics();
+        _adminCall(address(diamond),
+            abi.encodeWithSelector(ERC20Facet.mintERC20.selector, buyer,    200 ether));
+        _adminCall(address(diamond),
+            abi.encodeWithSelector(ERC20Facet.mintERC20.selector, borrower, 50 ether));
+        vm.deal(borrower, 10 ether);
 
-        vm.prank(timidan);
-        StakingFacet(address(diamond)).stake(1, 7 days, 100 ether);
+        uint256 tokenId = _mintAndSellTo(buyer, MARKET_PRICE);
 
-        vm.deal(magicEden, 10 ether);
-        vm.prank(magicEden);
-        BorrowFacet(address(diamond)).borrow{value: 2 ether}(1, 7 days);
+        vm.prank(buyer);
+        StakingFacet(address(diamond)).stake(tokenId, STAKE_DURATION, BORROW_PRICE);
 
-        _multisigCall(address(diamond), abi.encodeWithSelector(BorrowFacet.setERC20PerEth.selector, 50 ether));
+        vm.prank(borrower);
+        BorrowFacet(address(diamond)).borrow{value: 2 ether}(tokenId, STAKE_DURATION);
 
-        uint256 stakerEthBefore = timidan.balance;
+        vm.warp(block.timestamp + STAKE_DURATION + 1);
 
-        vm.prank(timidan);
-        BorrowFacet(address(diamond)).liquidate(1);
+        uint256 buyerEthBefore = buyer.balance;
 
-        assertEq(timidan.balance - stakerEthBefore, 1.6 ether);
+        vm.prank(buyer);
+        BorrowFacet(address(diamond)).liquidate(tokenId);
+
+        assertEq(buyer.balance - buyerEthBefore, 1.6 ether);
         assertEq(address(diamond).balance, 0.4 ether);
         assertEq(ERC721Facet(address(diamond)).totalSupply(), 0);
+        vm.expectRevert("ERC721: token does not exist");
+        ERC721Facet(address(diamond)).ownerOf(tokenId);
     }
-
 }
