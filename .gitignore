@@ -3,3 +3,5 @@ artifacts
 node_modules
 cache
 Architecture.md
+.env
+Makefile

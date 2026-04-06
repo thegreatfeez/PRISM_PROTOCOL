@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 struct MultisigProposal {
     address proposer;
-    bytes callData; // encoded diamondCut call
+    bytes callData;
     uint256 approvalCount;
     bool executed;
     mapping(address => bool) hasApproved;
@@ -33,6 +33,28 @@ struct Listing {
     address seller;
     uint256 price;
     bool active;
+}
+
+struct Traits {
+    uint16 attack;
+    uint16 defense;
+    bool mage;
+    uint256 requestId;
+}
+
+struct RequestStatus {
+    bool fulfilled;
+    bool exists;
+    uint256[] randomWords;
+}
+
+struct ReqData {
+    uint256 subscriptionId;
+    bytes32 keyHash;
+    uint32 callbackGasLimit;
+    uint16 requestConfirmations;
+    uint32 numWords;
+    address vrfCoordinator;
 }
 
 struct AppStorage {
@@ -79,4 +101,11 @@ struct AppStorage {
 
     // ── SVG / Traits ─────────────────────────
     mapping(uint256 => uint256) tokenSeed;
+
+    // ── VRF / Traits ─────────────────────────
+    mapping(uint256 => Traits) nftTraits;
+    mapping(uint256 => RequestStatus) requests;
+    ReqData reqData;
 }
+
+
