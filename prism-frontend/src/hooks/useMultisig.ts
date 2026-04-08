@@ -1,10 +1,22 @@
-import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { DIAMOND_ADDRESS, MULTISIG_ABI } from "../config/contracts";
 
 const CONTRACT = { address: DIAMOND_ADDRESS, abi: MULTISIG_ABI } as const;
 
 export function useMultisigOwners() {
-  return useReadContract({ ...CONTRACT, functionName: "getOwners" });
+  const { isConnected } = useAccount();
+  return useReadContract({
+    ...CONTRACT,
+    functionName: "getOwners",
+    query: {
+      enabled: isConnected,
+      staleTime: 30_000,
+      gcTime: 300_000,
+      refetchOnMount: true,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+    },
+  });
 }
 
 export function useMultisigRequired() {

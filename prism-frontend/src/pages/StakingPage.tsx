@@ -1,16 +1,17 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useAccount } from "wagmi";
-import { TrendingUp, Clock, Unlock } from "lucide-react";
+import { TrendingUp, Clock } from "lucide-react";
+import { AppKitButton } from "@reown/appkit/react";
 import { PageHeader } from "../components/layout/Layout";
 import { NFTCard } from "../components/nft/NFTCard";
 import { StakeModal } from "../components/staking/StakeModal";
-import { StatCard, EmptyState, Badge } from "../components/ui/index";
+import { StatCard, EmptyState } from "../components/ui/index";
 import { Card, CardHeader, CardTitle } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { ToastContainer } from "../components/ui/Toast";
 import { useToast } from "../hooks/useToast";
-import { useStakeDurations, useStakeInfo, useUnstakeNFT } from "../hooks/useStaking";
-import { useTotalSupply, useOwnerOf } from "../hooks/useERC721";
+import { useStakeDurations, useStakeInfo } from "../hooks/useStaking";
+import { useTotalSupply } from "../hooks/useERC721";
 import { formatDuration, formatDeadline, timeRemaining, isExpired, formatBps } from "../utils/formatters";
 
 // Card for a staked NFT
@@ -72,15 +73,19 @@ export function StakingPage() {
   const durations = stakeDurationsData?.[0] ?? [];
   const rewardBps = stakeDurationsData?.[1] ?? [];
 
-  const allIds = totalSupply
-    ? Array.from({ length: Number(totalSupply) }, (_, i) => BigInt(i + 1))
-    : [];
+  const allIds = useMemo(
+    () =>
+      totalSupply
+        ? Array.from({ length: Number(totalSupply) }, (_, i) => BigInt(i))
+        : [],
+    [totalSupply]
+  );
 
   if (!isConnected) {
     return (
       <div className="flex flex-col items-center gap-3 py-24">
         <p className="text-slate-500">Connect your wallet to view staking.</p>
-        <w3m-button />
+        <AppKitButton />
       </div>
     );
   }

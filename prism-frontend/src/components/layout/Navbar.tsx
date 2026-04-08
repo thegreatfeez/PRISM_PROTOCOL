@@ -13,7 +13,6 @@ interface NavLink {
 
 const navLinks: NavLink[] = [
   { to: "/",            label: "Dashboard" },
-  { to: "/nfts",        label: "My NFTs" },
   { to: "/marketplace", label: "Marketplace" },
   { to: "/staking",     label: "Staking" },
   { to: "/borrow",      label: "Borrow" },

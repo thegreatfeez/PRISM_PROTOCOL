@@ -1,8 +1,8 @@
 import { defineChain } from "viem";
 
 export const hashkey = defineChain({
-  id: 177,
-  name: "HashKey Chain",
+  id: 133,
+  name: "HashKey Chain Testnet",
   nativeCurrency: {
     name: "HashKey Token",
     symbol: "HSK",
@@ -10,16 +10,16 @@ export const hashkey = defineChain({
   },
   rpcUrls: {
     default: {
-      http: ["https://mainnet.hsk.xyz"],
+      http: ["https://testnet.hsk.xyz"],
     },
     public: {
-      http: ["https://mainnet.hsk.xyz"],
+      http: ["https://testnet.hsk.xyz"],
     },
   },
   blockExplorers: {
     default: {
       name: "HashKey Explorer",
-      url: "https://explorer.hashkey.cloud",
+      url: "https://testnet-explorer.hsk.xyz",
     },
   },
 });

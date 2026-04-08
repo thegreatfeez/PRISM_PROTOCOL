@@ -1,6 +1,7 @@
 import React from "react";
-import { Navbar } from "./Navbar";
 import { Sidebar } from "./Sidebar";
+import { ProtocolAssistant } from "../ai/ProtocolAssistant";
+import { WalletStatus } from "./WalletStatus";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -9,11 +10,14 @@ interface LayoutProps {
 export function Layout({ children }: LayoutProps) {
   return (
     <div className="min-h-screen bg-slate-50">
-      <Navbar />
+      <div className="fixed top-4 right-4 z-40">
+        <WalletStatus />
+      </div>
       <Sidebar />
-      <main className="pt-16 lg:pl-56">
-        <div className="max-w-6xl mx-auto p-6">{children}</div>
+      <main className="lg:pl-60">
+        <div className="max-w-6xl mx-auto px-6 pb-6 pt-20">{children}</div>
       </main>
+      <ProtocolAssistant />
     </div>
   );
 }

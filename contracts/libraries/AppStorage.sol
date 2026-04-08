@@ -106,6 +106,9 @@ struct AppStorage {
     mapping(uint256 => Traits) nftTraits;
     mapping(uint256 => RequestStatus) requests;
     ReqData reqData;
+
+    // ── Faucet ───────────────────────────────────────────────────
+    mapping(address => uint256) lastFaucetClaim;
+    uint256 faucetAmount;   // tokens per claim (default 100e18)
+    uint256 faucetCooldown; // seconds between claims (default 12 hours)
 }
-
-

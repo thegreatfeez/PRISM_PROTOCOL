@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { useMultisigOwners } from "./useMultisig";
 import { useReadContract } from "wagmi";
@@ -24,6 +25,11 @@ export function useRole(): {
   address: string | undefined;
 } {
   const { address, isConnected } = useAccount();
+  const configuredSigner = import.meta.env.VITE_DEFAULT_SIGNER_ADDRESS?.toLowerCase();
+  const [lastResolvedSigner, setLastResolvedSigner] = useState<{
+    address: string;
+    isSigner: boolean;
+  } | null>(null);
 
   const { data: owners, isLoading: loadingOwners } = useMultisigOwners();
 
@@ -33,41 +39,70 @@ export function useRole(): {
     address: DIAMOND_ADDRESS,
     abi: OWNERSHIP_ABI,
     functionName: "owner",
-    query: { enabled: isConnected && !!address },
+    query: {
+      enabled: isConnected && !!address,
+      staleTime: 30_000,
+      gcTime: 300_000,
+      refetchOnMount: true,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+    },
   });
 
-  const isLoading = loadingOwners || loadingOwner;
-
-  if (!isConnected || !address) {
-    return {
-      role: "guest",
-      isSigner: false,
-      isUser: false,
-      isGuest: true,
-      isLoading,
-      address: undefined,
-    };
-  }
+  useEffect(() => {
+    if (!isConnected || !address) {
+      setLastResolvedSigner(null);
+    }
+  }, [isConnected, address]);
 
   const ownerList = (owners as string[] | undefined) ?? [];
+  const addrLower = address?.toLowerCase();
 
-  const isMultisigOwner = ownerList.some(
-    (o) => o.toLowerCase() === address.toLowerCase()
-  );
+  const isMultisigOwner = !!addrLower && ownerList.some((o) => o.toLowerCase() === addrLower);
 
   const isContractOwner =
+    !!addrLower &&
     contractOwner !== undefined &&
-    (contractOwner as string).toLowerCase() === address.toLowerCase();
+    (contractOwner as string).toLowerCase() === addrLower;
 
-  const isSigner = isMultisigOwner || isContractOwner;
-  const role: Role = isSigner ? "signer" : "user";
+  const isConfiguredSigner =
+    !!addrLower && !!configuredSigner && configuredSigner === addrLower;
+
+  const resolvedNow = isConfiguredSigner || owners !== undefined || contractOwner !== undefined;
+  const resolvedSignerNow = isMultisigOwner || isContractOwner || isConfiguredSigner;
+
+  // IMPORTANT: This effect must always be called (no conditional early returns),
+  // otherwise React can crash when connection state changes.
+  useEffect(() => {
+    if (!isConnected || !address) return;
+    if (!resolvedNow) return;
+
+    setLastResolvedSigner((prev) => {
+      if (prev?.address === address && prev.isSigner === resolvedSignerNow) return prev;
+      return { address, isSigner: resolvedSignerNow };
+    });
+  }, [isConnected, resolvedNow, resolvedSignerNow, address]);
+
+  const hasCachedForAddress = !!address && lastResolvedSigner?.address === address;
+  const isSigner = isConnected && address
+    ? resolvedNow
+      ? resolvedSignerNow
+      : hasCachedForAddress
+        ? lastResolvedSigner!.isSigner
+        : false
+    : false;
+
+  const waitingOwners = isConnected && loadingOwners && owners === undefined;
+  const waitingOwner = isConnected && loadingOwner && contractOwner === undefined;
+  const isLoading = isConnected && !!address && !hasCachedForAddress && !resolvedNow && (waitingOwners || waitingOwner);
+  const role: Role = !isConnected || !address ? "guest" : isSigner ? "signer" : "user";
 
   return {
     role,
     isSigner,
     isUser: !isSigner,
-    isGuest: false,
+    isGuest: role === "guest",
     isLoading,
-    address,
+    address: isConnected ? address : undefined,
   };
 }

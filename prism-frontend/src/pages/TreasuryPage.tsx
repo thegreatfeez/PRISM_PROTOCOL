@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAccount, useBalance } from "wagmi";
 import { Vault, ArrowUpRight, Coins } from "lucide-react";
+import { AppKitButton } from "@reown/appkit/react";
 import { parseEther, parseUnits } from "viem";
 import { PageHeader } from "../components/layout/Layout";
 import { Card, CardHeader, CardTitle } from "../components/ui/Card";
@@ -59,7 +60,7 @@ export function TreasuryPage() {
     return (
       <div className="flex flex-col items-center gap-3 py-24">
         <p className="text-slate-500">Connect your wallet to view the treasury.</p>
-        <w3m-button />
+        <AppKitButton />
       </div>
     );
   }

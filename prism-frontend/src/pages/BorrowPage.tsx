@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAccount } from "wagmi";
 import { Repeat2, AlertTriangle } from "lucide-react";
+import { AppKitButton } from "@reown/appkit/react";
 import { PageHeader } from "../components/layout/Layout";
 import { NFTCard } from "../components/nft/NFTCard";
 import { BorrowModal, ReturnNFTModal, LiquidateModal } from "../components/borrow/BorrowModals";
@@ -118,14 +119,14 @@ export function BorrowPage() {
   const [liquidateModal, setLiquidateModal] = useState<bigint | null>(null);
 
   const allIds = totalSupply
-    ? Array.from({ length: Number(totalSupply) }, (_, i) => BigInt(i + 1))
+    ? Array.from({ length: Number(totalSupply) }, (_, i) => BigInt(i))
     : [];
 
   if (!isConnected) {
     return (
       <div className="flex flex-col items-center gap-3 py-24">
         <p className="text-slate-500">Connect your wallet to browse borrow listings.</p>
-        <w3m-button />
+        <AppKitButton />
       </div>
     );
   }

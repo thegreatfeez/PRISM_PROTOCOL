@@ -1,6 +1,7 @@
 import React from "react";
 import { ShieldOff, Loader2 } from "lucide-react";
 import { useRole, Role } from "../../hooks/useRole";
+import { AppKitButton } from "@reown/appkit/react";
 
 interface AccessGateProps {
   /** Minimum role required to see children */
@@ -32,20 +33,7 @@ const roleLabel: Record<Role, string> = {
  *   </AccessGate>
  */
 export function AccessGate({ require, children, message }: AccessGateProps) {
-  const { role, isLoading, isSigner, isGuest } = useRole();
-
-  // Still fetching owner list from chain
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <Loader2 size={24} className="text-violet-400 animate-spin" />
-      </div>
-    );
-  }
-
-  const hasAccess = roleRank[role] >= roleRank[require];
-
-  if (hasAccess) return <>{children}</>;
+  const { role, isLoading, isGuest } = useRole();
 
   // Not connected at all
   if (isGuest) {
@@ -62,10 +50,23 @@ export function AccessGate({ require, children, message }: AccessGateProps) {
             You need to connect to access this page.
           </p>
         </div>
-        <w3m-button />
+        <AppKitButton />
       </div>
     );
   }
+
+  if (require === "user") return <>{children}</>;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-32">
+        <Loader2 size={24} className="text-violet-400 animate-spin" />
+      </div>
+    );
+  }
+
+  const hasAccess = roleRank[role] >= roleRank[require];
+  if (hasAccess) return <>{children}</>;
 
   // Connected but wrong role
   return (
@@ -107,7 +108,8 @@ export function RoleOnly({
   require: Role;
   children: React.ReactNode;
 }) {
-  const { role, isLoading } = useRole();
+  const { role, isLoading, isGuest } = useRole();
+  if (require === "user") return isGuest ? null : <>{children}</>;
   if (isLoading) return null;
   const hasAccess = roleRank[role] >= roleRank[require];
   return hasAccess ? <>{children}</> : null;

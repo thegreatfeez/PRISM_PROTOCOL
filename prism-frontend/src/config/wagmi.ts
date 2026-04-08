@@ -1,6 +1,7 @@
 import { createAppKit } from "@reown/appkit/react";
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import { QueryClient } from "@tanstack/react-query";
+import type { AppKitNetwork } from "@reown/appkit-common";
 import { hashkey } from "./chains";
 
 // Your Reown (WalletConnect) Project ID — replace with your own from cloud.reown.com
@@ -8,7 +9,7 @@ export const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "YOUR_
 
 export const queryClient = new QueryClient();
 
-const networks = [hashkey] as const;
+const networks: [AppKitNetwork, ...AppKitNetwork[]] = [hashkey];
 
 export const wagmiAdapter = new WagmiAdapter({
   networks,

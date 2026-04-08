@@ -5,8 +5,10 @@ import { useTokenData, useTokenURI, useOwnerOf } from "../../hooks/useERC721";
 import { useStakeInfo } from "../../hooks/useStaking";
 import { useListing } from "../../hooks/useMarketplace";
 import { useBorrowInfo } from "../../hooks/useBorrow";
-import { formatToken, getTraitType, shortenAddress, addressUrl } from "../../utils/formatters";
+import { formatToken, getTraitType, timeRemaining, isExpired, tokenUrl } from "../../utils/formatters";
 import { Button } from "../ui/Button";
+import { DIAMOND_ADDRESS } from "../../config/contracts";
+import { useAccount } from "wagmi";
 
 interface NFTCardProps {
   tokenId: bigint;
@@ -79,19 +81,66 @@ function NFTImage({ tokenId }: { tokenId: bigint }) {
   );
 }
 
-function StatusBadge({ tokenId }: { tokenId: bigint }) {
-  const { data: stake } = useStakeInfo(tokenId);
-  const { data: borrow } = useBorrowInfo(tokenId);
-  const { data: listing } = useListing(tokenId);
+function StatusBadge({
+  viewer,
+  owner,
+  isListed,
+  isStaked,
+  borrowInfo,
+}: {
+  viewer?: string;
+  owner?: string;
+  isListed: boolean;
+  isStaked: boolean;
+  borrowInfo?: readonly [`0x${string}`, `0x${string}`, bigint, bigint];
+}) {
+  const zero = "0x0000000000000000000000000000000000000000";
+  const protocolOwner = DIAMOND_ADDRESS.toLowerCase();
+  const viewerLc = (viewer ?? "").toLowerCase();
+  const ownerLc = (owner ?? "").toLowerCase();
+  const isProtocolHeld = !!owner && ownerLc === protocolOwner;
 
-  const isStaked = stake && stake[0] !== "0x0000000000000000000000000000000000000000";
-  const isBorrowed = borrow && borrow[0] !== "0x0000000000000000000000000000000000000000";
-  const isListed = listing && listing[2];
+  const borrower = borrowInfo?.[0] ?? (zero as `0x${string}`);
+  const lender = borrowInfo?.[1] ?? (zero as `0x${string}`);
+  const deadline = borrowInfo?.[3] ?? 0n;
+  const isBorrowed = borrower !== zero;
+  const expired = isExpired(deadline);
 
-  if (isBorrowed) return <Badge color="amber" dot>Borrowed</Badge>;
-  if (isStaked) return <Badge color="emerald" dot>Staked</Badge>;
+  const isOwner = !!viewer && !!owner && viewerLc === ownerLc;
+  const isBorrower = !!viewer && borrower.toLowerCase() === viewerLc;
+  const isLender = !!viewer && lender.toLowerCase() === viewerLc;
+
+  // Borrow is most important; wording depends on whose perspective.
+  if (isBorrowed) {
+    if (isBorrower) {
+      return (
+        <Badge color={expired ? "rose" : "amber"} dot>
+          {expired ? "Overdue" : `Borrowing · ${timeRemaining(deadline)}`}
+        </Badge>
+      );
+    }
+    if (isLender) return <Badge color={expired ? "rose" : "amber"} dot>{expired ? "Loan overdue" : "On loan"}</Badge>;
+    return <Badge color={expired ? "rose" : "amber"} dot>{expired ? "Overdue" : "Borrowed"}</Badge>;
+  }
+
+  // Owner lifecycle emphasis: Listed -> Staked -> (Borrowed handled above) -> Owned
+  if (isOwner) {
+    if (isListed) return <Badge color="sky" dot>Listed</Badge>;
+    if (isStaked) return <Badge color="emerald" dot>Staked</Badge>;
+    return <Badge color="violet" dot>Owned</Badge>;
+  }
+
+  // Non-owner view
+  // Protocol-held NFTs are not "owned" yet; treat them as "Available" unless listed/staked/borrowed.
+  if (isProtocolHeld) {
+    if (isListed) return <Badge color="sky" dot>Listed</Badge>;
+    if (isStaked) return <Badge color="emerald" dot>Staked</Badge>;
+    return <Badge color="slate" dot>Available</Badge>;
+  }
   if (isListed) return <Badge color="sky" dot>Listed</Badge>;
-  return null;
+  if (isStaked) return <Badge color="emerald" dot>Staked</Badge>;
+  if (owner) return <Badge color="slate" dot>Owned</Badge>;
+  return <Badge color="slate" dot>Unknown</Badge>;
 }
 
 export function NFTCard({
@@ -104,9 +153,12 @@ export function NFTCard({
   selected = false,
   onClick,
 }: NFTCardProps) {
+  const { address: viewer } = useAccount();
   const { data: tokenData } = useTokenData(tokenId);
   const { data: owner } = useOwnerOf(tokenId);
   const { data: listing } = useListing(tokenId);
+  const { data: stake } = useStakeInfo(tokenId);
+  const { data: borrow } = useBorrowInfo(tokenId);
 
   const attack = tokenData?.attack ?? 0;
   const defense = tokenData?.defense ?? 0;
@@ -114,6 +166,17 @@ export function NFTCard({
   const trait = getTraitType(mage, attack, defense);
   const price = listing?.[1] ?? 0n;
   const isListed = listing?.[2] ?? false;
+  const isStaked = !!stake && stake[0] !== "0x0000000000000000000000000000000000000000";
+  const isBorrowed = !!borrow && borrow[0] !== "0x0000000000000000000000000000000000000000";
+  const disableSecondary =
+    (secondaryActionLabel?.toLowerCase().includes("list") ?? false) && (isListed || isStaked || isBorrowed);
+  const secondaryDisabledTitle = disableSecondary
+    ? isListed
+      ? "Already listed"
+      : isBorrowed
+        ? "Currently borrowed"
+        : "Currently staked"
+    : undefined;
 
   return (
     <div
@@ -132,7 +195,7 @@ export function NFTCard({
         <div className="relative">
           <NFTImage tokenId={tokenId} />
           <div className="absolute top-2 left-2">
-            <StatusBadge tokenId={tokenId} />
+            <StatusBadge viewer={viewer ?? undefined} owner={owner ?? undefined} isListed={isListed} isStaked={isStaked} borrowInfo={borrow as any} />
           </div>
           <div className="absolute top-2 right-2">
             <Badge color={traitBadgeColor(mage, attack, defense)} size="sm">
@@ -175,14 +238,14 @@ export function NFTCard({
         {/* Owner */}
         {showOwner && owner && (
           <a
-            href={addressUrl(owner)}
+            href={tokenUrl(DIAMOND_ADDRESS, tokenId)}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
             className="flex items-center gap-1 text-xs text-slate-400 hover:text-violet-600 transition-colors mb-2"
           >
             <ExternalLink size={10} />
-            {shortenAddress(owner)}
+            View NFT on explorer
           </a>
         )}
 
@@ -207,8 +270,11 @@ export function NFTCard({
                 variant="secondary"
                 size="sm"
                 fullWidth
+                disabled={disableSecondary}
+                title={secondaryDisabledTitle}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (disableSecondary) return;
                   onSecondaryAction(tokenId);
                 }}
               >

@@ -61,6 +61,7 @@ export const ERC20_ABI = [
 ] as const;
 
 export const MARKETPLACE_ABI = [
+  { name: "batchListNFT", type: "function", stateMutability: "nonpayable", inputs: [{ name: "_tokenIds", type: "uint256[]" }, { name: "_price", type: "uint256" }], outputs: [] },
   { name: "buyNFT", type: "function", stateMutability: "nonpayable", inputs: [{ name: "_tokenId", type: "uint256" }], outputs: [] },
   { name: "cancelListing", type: "function", stateMutability: "nonpayable", inputs: [{ name: "_tokenId", type: "uint256" }], outputs: [] },
   { name: "getActiveListings", type: "function", stateMutability: "view", inputs: [{ name: "_tokenIds", type: "uint256[]" }], outputs: [{ name: "tokenIds", type: "uint256[]" }, { name: "sellers", type: "address[]" }, { name: "prices", type: "uint256[]" }] },
@@ -135,6 +136,41 @@ export const OWNERSHIP_ABI = [
   { name: "OwnershipTransferred", type: "event", inputs: [{ name: "previousOwner", type: "address", indexed: true }, { name: "newOwner", type: "address", indexed: true }] },
 ] as const;
 
+export const FAUCET_ABI = [
+  { name: "claimFaucet",      type: "function", stateMutability: "nonpayable", inputs: [], outputs: [] },
+  { name: "setFaucetAmount",  type: "function", stateMutability: "nonpayable", inputs: [{ name: "_amount",   type: "uint256" }], outputs: [] },
+  { name: "setFaucetCooldown",type: "function", stateMutability: "nonpayable", inputs: [{ name: "_cooldown", type: "uint256" }], outputs: [] },
+  { name: "getFaucetInfo",    type: "function", stateMutability: "view",       inputs: [], outputs: [{ name: "amount", type: "uint256" }, { name: "cooldown", type: "uint256" }, { name: "balance", type: "uint256" }] },
+  { name: "canClaim",         type: "function", stateMutability: "view",       inputs: [{ name: "_user", type: "address" }], outputs: [{ name: "", type: "bool" }] },
+  { name: "getNextClaimTime", type: "function", stateMutability: "view",       inputs: [{ name: "_user", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
+  { name: "FaucetClaimed",    type: "event",    inputs: [{ name: "claimer", type: "address", indexed: true }, { name: "amount", type: "uint256", indexed: false }] },
+  { name: "FaucetAmountSet",  type: "event",    inputs: [{ name: "amount",  type: "uint256", indexed: false }] },
+  { name: "FaucetCooldownSet",type: "event",    inputs: [{ name: "cooldown",type: "uint256", indexed: false }] },
+] as const;
+
+/** EIP-2535 diamondCut — used to decode upgrade proposals. */
+export const DIAMOND_CUT_ABI = [
+  {
+    name: "diamondCut",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "_diamondCut",
+        type: "tuple[]",
+        components: [
+          { name: "facetAddress", type: "address" },
+          { name: "action", type: "uint8" },
+          { name: "functionSelectors", type: "bytes4[]" },
+        ],
+      },
+      { name: "_init", type: "address" },
+      { name: "_calldata", type: "bytes" },
+    ],
+    outputs: [],
+  },
+] as const;
+
 export const DIAMOND_LOUPE_ABI = [
   { name: "facetAddress", type: "function", stateMutability: "view", inputs: [{ name: "_functionSelector", type: "bytes4" }], outputs: [{ name: "facetAddress_", type: "address" }] },
   { name: "facetAddresses", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "facetAddresses_", type: "address[]" }] },
@@ -145,6 +181,7 @@ export const DIAMOND_LOUPE_ABI = [
 
 // Combined ABI for the Diamond proxy (all facets interact through this address)
 export const DIAMOND_ABI = [
+  ...DIAMOND_CUT_ABI,
   ...ERC721_ABI,
   ...ERC20_ABI,
   ...MARKETPLACE_ABI,
@@ -153,5 +190,6 @@ export const DIAMOND_ABI = [
   ...MULTISIG_ABI,
   ...TREASURY_ABI,
   ...OWNERSHIP_ABI,
+  ...FAUCET_ABI,
   ...DIAMOND_LOUPE_ABI,
 ] as const;

@@ -23,6 +23,9 @@ declare namespace JSX {
 // Env variables
 interface ImportMetaEnv {
   readonly VITE_WALLETCONNECT_PROJECT_ID: string;
+  readonly VITE_DEFAULT_SIGNER_ADDRESS?: string;
+  readonly VITE_AI_GOVERNANCE_URL?: string;
+  readonly VITE_AI_BASE_URL?: string;
 }
 
 interface ImportMeta {

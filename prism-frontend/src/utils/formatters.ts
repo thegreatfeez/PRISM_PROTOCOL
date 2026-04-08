@@ -91,7 +91,7 @@ export function getTraitColor(trait: string): string {
 
 // ─── Explorer URLs ────────────────────────────────────────────────────────────
 
-const EXPLORER = "https://explorer.hashkey.cloud";
+const EXPLORER = "https://testnet-explorer.hsk.xyz";
 
 export function txUrl(hash: string): string {
   return `${EXPLORER}/tx/${hash}`;
@@ -101,6 +101,7 @@ export function addressUrl(addr: string): string {
   return `${EXPLORER}/address/${addr}`;
 }
 
-export function tokenUrl(tokenId: bigint): string {
-  return `${EXPLORER}/token/${tokenId}`;
+
+export function tokenUrl(contractAddress: string, tokenId: bigint): string {
+  return `${EXPLORER}/token/${contractAddress}/instance/${tokenId.toString()}`;
 }

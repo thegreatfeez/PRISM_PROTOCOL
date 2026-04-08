@@ -118,6 +118,20 @@ contract MarketplaceFacet {
         }
     }
 
+    function batchListNFT(uint256[] calldata _tokenIds, uint256 _price) external {
+        require(_tokenIds.length > 0, "Marketplace: empty list");
+        require(_price > 0, "Marketplace: price must be nonzero");
+        for (uint256 i; i < _tokenIds.length; i++) {
+            uint256 tokenId = _tokenIds[i];
+            require(s.tokenIdToOwner[tokenId] == msg.sender, "Marketplace: not token owner");
+            require(!s.listings[tokenId].active, "Marketplace: already listed");
+            require(s.stakes[tokenId].staker == address(0), "Marketplace: token is staked");
+            require(s.borrows[tokenId].borrower == address(0), "Marketplace: token is borrowed");
+            s.listings[tokenId] = Listing({ seller: msg.sender, price: _price, active: true });
+            emit Listed(tokenId, msg.sender, _price);
+        }
+    }
+
     function getPlatformFee() external view returns (uint256) {
         return s.platformFeeBps;
     }

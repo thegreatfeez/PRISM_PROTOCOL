@@ -2,10 +2,8 @@ import { useEffect } from "react";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import { useBorrowNFT, useReturnNFT, useLiquidate, useRequiredCollateral, useBorrowInfo, useBorrowListing } from "../../hooks/useBorrow";
-import { useTokenAllowance, useApproveToken } from "../../hooks/useERC20";
 import { useTokenBalance } from "../../hooks/useERC20";
 import { useAccount } from "wagmi";
-import { DIAMOND_ADDRESS } from "../../config/contracts";
 import { formatToken, formatEth, formatDeadline, timeRemaining, isExpired } from "../../utils/formatters";
 
 // ─── Borrow Modal ─────────────────────────────────────────────────────────────
@@ -23,17 +21,14 @@ export function BorrowModal({ isOpen, onClose, tokenId, onSuccess, onError }: Bo
   const { data: listing } = useBorrowListing(tokenId ?? undefined);
   const { data: collateral, isLoading: collateralLoading } = useRequiredCollateral(tokenId ?? undefined);
   const { data: balance } = useTokenBalance(address);
-  const { data: allowance, refetch: refetchAllowance } = useTokenAllowance(address, DIAMOND_ADDRESS);
-  const { approve, isPending: approving, isSuccess: approved } = useApproveToken();
   const { borrow, isPending: borrowing, isSuccess: borrowed } = useBorrowNFT();
 
   const borrowPrice = listing?.[1] ?? 0n;
   const duration = listing?.[2] ?? 0n;
   const collateralAmount = (collateral as bigint) ?? 0n;
 
-  const hasAllowance = allowance !== undefined && (allowance as bigint) >= borrowPrice;
+  const hasEnoughBalance = balance !== undefined && (balance as bigint) >= borrowPrice;
 
-  useEffect(() => { if (approved) refetchAllowance(); }, [approved]);
   useEffect(() => {
     if (borrowed) {
       onSuccess(`NFT #${tokenId} borrowed!`);
@@ -79,19 +74,18 @@ export function BorrowModal({ isOpen, onClose, tokenId, onSuccess, onError }: Bo
           <p>• Miss deadline → NFT burned, collateral forfeited</p>
         </div>
 
-        {!hasAllowance && (
-          <Button fullWidth variant="secondary" loading={approving}
-            onClick={() => approve(DIAMOND_ADDRESS as `0x${string}`, borrowPrice)}>
-            Approve PRM Spending
-          </Button>
+        {!hasEnoughBalance && (
+          <div className="bg-rose-50 border border-rose-100 rounded-xl p-3 text-xs text-rose-700">
+            Insufficient PRM balance to pay the borrow fee.
+          </div>
         )}
 
         <Button
           fullWidth variant="primary" loading={borrowing}
-          disabled={!hasAllowance || borrowing || collateralLoading}
+          disabled={!hasEnoughBalance || borrowing || collateralLoading}
           onClick={() => borrow(tokenId, duration, collateralAmount)}
         >
-          {!hasAllowance ? "Approve First" : "Borrow NFT"}
+          {!hasEnoughBalance ? "Insufficient Balance" : "Borrow NFT"}
         </Button>
       </div>
     </Modal>

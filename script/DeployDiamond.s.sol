@@ -19,6 +19,7 @@ import {MultisigFacet} from "../contracts/facets/MultisigFacet.sol";
 import {TreasuryFacet} from "../contracts/facets/TreasuryFacet.sol";
 import {SVGFacet} from "../contracts/facets/SVGFacet.sol";
 import {VRFFacet} from "../contracts/facets/VRFFacet.sol";
+import {FaucetFacet} from "../contracts/facets/FaucetFacet.sol";
 import {ReqData} from "../contracts/libraries/AppStorage.sol";
 
 contract DeployDiamond is Script, DiamondUpgradeHelper {
@@ -41,6 +42,7 @@ contract DeployDiamond is Script, DiamondUpgradeHelper {
         TreasuryFacet treasuryF = new TreasuryFacet();
         VRFFacet vrfF = new VRFFacet();
         SVGFacet svgF = new SVGFacet();
+        FaucetFacet faucetF = new FaucetFacet();
 
         address[] memory baseFacetAddresses = new address[](4);
         string[] memory baseFacetNames = new string[](4);
@@ -58,12 +60,13 @@ contract DeployDiamond is Script, DiamondUpgradeHelper {
         executeDiamondCut(IDiamondCut(address(diamond)), baseCuts, address(0), "");
 
         IDiamondLoupe loupe = IDiamondLoupe(address(diamond));
-        IDiamondCut.FacetCut[] memory addCuts = new IDiamondCut.FacetCut[](5);
+        IDiamondCut.FacetCut[] memory addCuts = new IDiamondCut.FacetCut[](6);
         addCuts[0] = buildAddMissingCutByName(loupe, address(erc20F), "ERC20Facet");
         addCuts[1] = buildAddCutByName(address(borrowF), "BorrowFacet");
         addCuts[2] = buildAddCutByName(address(marketF), "MarketplaceFacet");
         addCuts[3] = buildAddCutByName(address(stakingF), "StakingFacet");
         addCuts[4] = buildAddCutByName(address(treasuryF), "TreasuryFacet");
+        addCuts[5] = buildAddCutByName(address(faucetF), "FaucetFacet");
         executeDiamondCut(IDiamondCut(address(diamond)), addCuts, address(0), "");
 
         IDiamondCut.FacetCut[] memory vrfCut = new IDiamondCut.FacetCut[](1);

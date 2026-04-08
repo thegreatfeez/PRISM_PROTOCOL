@@ -20,6 +20,16 @@ The official frontend for Prism Protocol — a fully on-chain gaming asset ecosy
 | TanStack Query v5 | Async state & caching |
 | React Router v6 | Client-side routing |
 | Lucide React | Icons |
+| Node + Express (optional) | Local AI proxy for Gemini (`server/`) |
+
+---
+
+## Layout & navigation
+
+- **Primary navigation** is the **left sidebar** (Dashboard, My NFTs, Marketplace, Staking, Borrow, and **Governance** / **Treasury** for multisig signers and contract owner).
+- **Governance** and **Treasury** are shown only to **signers** (multisig owners, on-chain `owner()`, or optional env override — see Environment variables).
+- There is **no full top navigation bar**. **WalletConnect** (`<w3m-button />`) appears in the **top-right** corner and again in the **sidebar** wallet section when connected.
+- **Protocol guide (AI)** — floating **“Protocol guide”** button (bottom-right) on all pages; opens a chat that answers questions about the protocol and UI. Requires the optional AI proxy (see [AI integration](#ai-integration)).
 
 ---
 
@@ -28,13 +38,17 @@ The official frontend for Prism Protocol — a fully on-chain gaming asset ecosy
 ```
 src/
 ├── config/
-│   ├── chains.ts          # HashKey Chain definition
-│   ├── contracts.ts       # All ABIs + contract addresses
-│   └── wagmi.ts           # Wagmi adapter + AppKit setup
+│   ├── ai.ts               # Shared AI proxy base URL helper
+│   ├── chains.ts           # HashKey Chain definition + block explorer
+│   ├── contracts.ts        # All ABIs + contract addresses
+│   └── wagmi.ts            # Wagmi adapter + AppKit setup
+├── services/
+│   ├── aiAssistant.ts      # Protocol Q&A → POST /protocol-assistant
+│   └── aiGovernance.ts     # Proposal summary → POST /governance-summary
 ├── types/
-│   └── index.ts           # Shared TypeScript types
+│   └── index.ts            # Shared TypeScript types
 ├── utils/
-│   └── formatters.ts      # Token/address/time formatting helpers
+│   └── formatters.ts       # Token/address/time + explorer URL helpers
 ├── hooks/
 │   ├── useERC721.ts        # NFT read/write hooks
 │   ├── useERC20.ts         # Token read/write hooks
@@ -43,13 +57,17 @@ src/
 │   ├── useBorrow.ts        # Borrow hooks
 │   ├── useMultisig.ts      # Governance hooks
 │   ├── useTreasury.ts      # Treasury hooks
+│   ├── useRole.ts          # Signer vs user (owner + multisig + optional env)
 │   └── useToast.ts         # Toast notification hook
 ├── components/
+│   ├── ai/
+│   │   └── ProtocolAssistant.tsx  # Global AI chat modal
 │   ├── layout/
-│   │   ├── Layout.tsx      # Page wrapper + PageHeader
-│   │   ├── Navbar.tsx      # Top navigation bar
-│   │   └── Sidebar.tsx     # Left sidebar with nav links
+│   │   ├── Layout.tsx      # Sidebar + top-right wallet + Protocol guide
+│   │   ├── Navbar.tsx      # Legacy top bar (not mounted in Layout)
+│   │   └── Sidebar.tsx     # Nav, wallet, contract explorer link
 │   ├── ui/
+│   │   ├── AccessGate.tsx  # Route-level role gating
 │   │   ├── Button.tsx      # Button component (5 variants)
 │   │   ├── Card.tsx        # Card + CardHeader + CardTitle
 │   │   ├── index.tsx       # Badge, Input, StatCard, EmptyState, Divider
@@ -65,12 +83,18 @@ src/
 │       └── BorrowModals.tsx       # Borrow, Return, Liquidate modals
 └── pages/
     ├── Dashboard.tsx       # Protocol overview + stats
-    ├── NFTsPage.tsx        # User's NFT collection
+    ├── NFTsPage.tsx        # NFT collection + mint (signers)
     ├── MarketplacePage.tsx # Active listings browser
     ├── StakingPage.tsx     # Stake/unstake interface
     ├── BorrowPage.tsx      # Borrow listings + active borrows
-    ├── GovernancePage.tsx  # Multisig proposals + approval flow
+    ├── GovernancePage.tsx  # Multisig + AI proposal summary
     └── TreasuryPage.tsx    # Treasury balances + withdrawals
+
+server/                     # Optional Node proxy for Gemini (API key stays server-side)
+├── package.json
+└── index.mjs               # POST /protocol-assistant, POST /governance-summary
+
+AI.md                       # Detailed AI setup, testing, and troubleshooting
 ```
 
 ---
@@ -87,31 +111,92 @@ pnpm install
 yarn install
 ```
 
-### 2. Set up environment variables
+### 2. Environment variables
 
-```bash
-cp .env.example .env
-```
+Copy and edit `.env` (see your team’s `.env.example` if present).
 
-Edit `.env` and add your Reown (WalletConnect) Project ID:
+**Required for the web app**
 
 ```env
 VITE_WALLETCONNECT_PROJECT_ID=your_project_id_here
 ```
 
-Get a free Project ID at [cloud.reown.com](https://cloud.reown.com).
+Get a Project ID at [cloud.reown.com](https://cloud.reown.com).
 
-### 3. Start the dev server
+**Optional**
+
+```env
+# Treat this wallet as signer (UI) in addition to on-chain checks
+VITE_DEFAULT_SIGNER_ADDRESS=0x...
+
+# AI proxy origin (same server serves both protocol chat and governance summary)
+VITE_AI_BASE_URL=http://localhost:8787
+```
+
+If you omit `VITE_AI_BASE_URL`, you can use the older name `VITE_AI_GOVERNANCE_URL` with the same value. `VITE_AI_BASE_URL` takes precedence when both are set.
+
+Restart `npm run dev` after changing any `VITE_*` variable.
+
+### 3. Optional: AI proxy (Gemini)
+
+The browser never stores your Gemini key. Run the small server when using AI features:
+
+```bash
+cd server
+npm install
+```
+
+Set env in `prism-frontend/.env` (recommended) or root `.env`:
+
+```env
+GEMINI_API_KEY=your_key_here
+# optional:
+GEMINI_MODEL=gemini-2.5-flash
+PORT=8787
+```
+
+If `GEMINI_MODEL` is unavailable, the proxy automatically falls back to other supported flash models.
+
+Start the proxy:
+
+```bash
+npm start
+```
+
+In another terminal, start the frontend:
 
 ```bash
 npm run dev
 ```
+
+Full details, endpoints, and testing steps: **[AI.md](./AI.md)**.
 
 ### 4. Build for production
 
 ```bash
 npm run build
 ```
+
+---
+
+## AI integration
+
+| Feature | Where | Backend route |
+|--------|--------|----------------|
+| **Protocol guide** | Floating **Protocol guide** (bottom-right) | `POST /protocol-assistant` |
+| **Governance proposal summary** | Governance → expand proposal → **Generate AI analysis** | `POST /governance-summary` |
+
+Both are implemented in `server/index.mjs` and documented in **[AI.md](./AI.md)**.
+
+---
+
+## Block explorer
+
+Address and transaction links use the **HashKey testnet explorer**:
+
+`https://testnet-explorer.hsk.xyz`
+
+(Configured in `src/utils/formatters.ts` and `src/config/chains.ts`.)
 
 ---
 
@@ -142,14 +227,20 @@ npm run build
 ### Diamond Pattern
 All contract reads and writes target the single Diamond proxy address (`DIAMOND_ADDRESS`). The combined ABI includes every facet's functions. This mirrors how the EIP-2535 Diamond Standard works on-chain.
 
+### Access control
+`useRole` treats a wallet as a **signer** if it is a multisig owner, the on-chain contract **owner**, or (optionally) matches `VITE_DEFAULT_SIGNER_ADDRESS`. **Governance** and **Treasury** routes use `AccessGate` for signer-only pages; sidebar links for those pages are hidden for non-signers.
+
 ### NFT Ownership Scanning
-The `NFTsPage` and other pages scan token IDs `1..totalSupply` and filter by ownership. For small supplies this works fine. For production scale, replace with event-based indexing (e.g. The Graph, Ponder, or a custom indexer) to avoid making thousands of RPC calls.
+The `NFTsPage` and related views scan token IDs from `0` to `totalSupply - 1` (or equivalent range) and batch-read owners where applicable. For very large supplies, consider event-based indexing (e.g. The Graph, Ponder) instead of full scans.
 
 ### On-Chain SVG Rendering
 The `NFTCard` component calls `tokenURI` for each token. The response is a `data:application/json;base64,...` URI containing the on-chain SVG image. The component decodes this and renders it as an `<img>` — no IPFS or external servers needed.
 
 ### Token Approvals
 ERC20 spending approvals and NFT `setApprovalForAll` approvals are handled inline inside each modal, so the flow is always: check approval → approve if needed → execute action.
+
+### AI safety
+AI output is **informational only**. It does not sign transactions. Users must confirm every action in the wallet.
 
 ---
 
@@ -158,18 +249,18 @@ ERC20 spending approvals and NFT `setApprovalForAll` approvals are handled inlin
 | Route | Page | Description |
 |---|---|---|
 | `/` | Dashboard | Protocol stats, quick actions, governance overview |
-| `/nfts` | My NFTs | User's owned NFTs with stake/list actions |
-| `/marketplace` | Marketplace | All active listings with buy/cancel/update-price |
-| `/staking` | Staking | Stake NFTs to earn borrow fee income |
+| `/nfts` | My NFTs | Collection view; mint/batch mint for signers |
+| `/marketplace` | Marketplace | Active listings with buy/cancel/update-price |
+| `/staking` | Staking | Stake/unstake interface |
 | `/borrow` | Borrow | Browse and borrow available NFTs with collateral |
-| `/governance` | Governance | Submit proposals, approve, revoke, execute |
-| `/treasury` | Treasury | View treasury balances; withdraw (multisig owners only) |
+| `/governance` | Governance | Multisig proposals; **AI proposal summary** when expanded |
+| `/treasury` | Treasury | Treasury balances; withdrawals (signers) |
 
 ---
 
 ## AppKit (Reown) Configuration
 
-AppKit is initialized in `src/config/wagmi.ts`. The HashKey Chain is pre-configured as the sole network. AppKit's `<w3m-button />` web component is used in the Navbar and on connect-prompt screens.
+AppKit is initialized in `src/config/wagmi.ts`. The HashKey Chain is pre-configured as the sole network. AppKit web components (`<w3m-button />`, `<w3m-account-button />`) are used in the layout and connect prompts.
 
 To add more chains, extend the `networks` array in `wagmi.ts` and import them from `viem/chains` or define custom chains.
 

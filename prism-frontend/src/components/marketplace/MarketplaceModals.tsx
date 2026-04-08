@@ -6,10 +6,11 @@ import { Button } from "../ui/Button";
 import { Input } from "../ui/index";
 import { useListNFT, useBuyNFT, useCancelListing, useUpdatePrice, usePlatformFee, useListing } from "../../hooks/useMarketplace";
 import { useIsApprovedForAll, useSetApprovalForAll } from "../../hooks/useERC721";
-import { useTokenAllowance, useApproveToken } from "../../hooks/useERC20";
 import { useTokenBalance } from "../../hooks/useERC20";
 import { DIAMOND_ADDRESS } from "../../config/contracts";
 import { formatToken, formatBps } from "../../utils/formatters";
+import { useStakeInfo } from "../../hooks/useStaking";
+import { useBorrowInfo } from "../../hooks/useBorrow";
 
 // ─── List NFT Modal ──────────────────────────────────────────────────────────
 
@@ -24,6 +25,10 @@ interface ListModalProps {
 export function ListNFTModal({ isOpen, onClose, tokenId, onSuccess, onError }: ListModalProps) {
   const { address } = useAccount();
   const [price, setPrice] = useState("");
+
+  const { data: listingState } = useListing(tokenId ?? undefined);
+  const { data: stake } = useStakeInfo(tokenId ?? undefined);
+  const { data: borrow } = useBorrowInfo(tokenId ?? undefined);
 
   const { data: isApproved, refetch: refetchApproval } = useIsApprovedForAll(address, DIAMOND_ADDRESS);
   const { setApprovalForAll, isPending: approving, isSuccess: approvalDone } = useSetApprovalForAll();
@@ -49,9 +54,27 @@ export function ListNFTModal({ isOpen, onClose, tokenId, onSuccess, onError }: L
 
   if (!tokenId) return null;
 
+  const isAlreadyListed = Boolean(listingState?.[2]);
+  const isStaked = !!stake && stake[0] !== "0x0000000000000000000000000000000000000000";
+  const isBorrowed = !!borrow && borrow[0] !== "0x0000000000000000000000000000000000000000";
+  const blockedReason = isAlreadyListed
+    ? "This NFT is already listed."
+    : isBorrowed
+      ? "This NFT is currently borrowed."
+      : isStaked
+        ? "This NFT is currently staked."
+        : "";
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`List NFT #${tokenId}`} subtitle="Sell your NFT on the marketplace">
       <div className="space-y-4">
+        {blockedReason && (
+          <div className="bg-rose-50 border border-rose-100 rounded-xl p-3 text-xs text-rose-700">
+            <p className="font-semibold">Cannot list</p>
+            <p className="mt-1">{blockedReason}</p>
+          </div>
+        )}
+
         <Input
           label="Listing Price"
           placeholder="0.00"
@@ -76,7 +99,14 @@ export function ListNFTModal({ isOpen, onClose, tokenId, onSuccess, onError }: L
           </Button>
         )}
 
-        <Button fullWidth variant="primary" loading={listing} disabled={!isApproved || !price || listing} onClick={handleList}>
+        <Button
+          fullWidth
+          variant="primary"
+          loading={listing}
+          disabled={!isApproved || !price || listing || !!blockedReason}
+          onClick={handleList}
+          title={blockedReason || undefined}
+        >
           {!isApproved ? "Approve First" : "List NFT"}
         </Button>
       </div>
@@ -98,15 +128,11 @@ export function BuyNFTModal({ isOpen, onClose, tokenId, onSuccess, onError }: Bu
   const { address } = useAccount();
   const { data: listing } = useListing(tokenId ?? undefined);
   const { data: balance } = useTokenBalance(address);
-  const { data: allowance, refetch: refetchAllowance } = useTokenAllowance(address, DIAMOND_ADDRESS);
-  const { approve, isPending: approving, isSuccess: approved } = useApproveToken();
   const { buyNFT, isPending: buying, isSuccess: bought } = useBuyNFT();
 
   const price = listing?.[1] ?? 0n;
   const hasEnoughBalance = balance !== undefined && (balance as bigint) >= price;
-  const hasAllowance = allowance !== undefined && (allowance as bigint) >= price;
 
-  useEffect(() => { if (approved) refetchAllowance(); }, [approved]);
   useEffect(() => {
     if (bought) {
       onSuccess(`NFT #${tokenId} purchased!`);
@@ -138,19 +164,14 @@ export function BuyNFTModal({ isOpen, onClose, tokenId, onSuccess, onError }: Bu
           </div>
         )}
 
-        {hasEnoughBalance && !hasAllowance && (
-          <Button fullWidth variant="secondary" loading={approving}
-            onClick={() => approve(DIAMOND_ADDRESS as `0x${string}`, price)}>
-            Approve PRM Spending
-          </Button>
+        {hasEnoughBalance && (
+          <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs text-slate-600">
+            This protocol uses an internal PRM balance ledger (not ERC20 `transferFrom`), so no token spending approval is required to buy.
+          </div>
         )}
 
-        <Button
-          fullWidth variant="primary" loading={buying}
-          disabled={!hasEnoughBalance || !hasAllowance || buying}
-          onClick={() => buyNFT(tokenId)}
-        >
-          {!hasEnoughBalance ? "Insufficient Balance" : !hasAllowance ? "Approve First" : "Confirm Purchase"}
+        <Button fullWidth variant="primary" loading={buying} disabled={!hasEnoughBalance || buying} onClick={() => buyNFT(tokenId)}>
+          {!hasEnoughBalance ? "Insufficient Balance" : "Confirm Purchase"}
         </Button>
       </div>
     </Modal>

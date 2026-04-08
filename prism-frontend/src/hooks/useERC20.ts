@@ -25,7 +25,14 @@ export function useTokenBalance(account?: string) {
     ...CONTRACT,
     functionName: "erc20BalanceOf",
     args: account ? [account as `0x${string}`] : undefined,
-    query: { enabled: !!account },
+    query: {
+      enabled: !!account,
+      staleTime: 10_000,
+      gcTime: 60_000,
+      refetchOnMount: true,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+    },
   });
 }
 

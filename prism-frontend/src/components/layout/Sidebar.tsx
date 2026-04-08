@@ -2,7 +2,7 @@ import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard, Image, ShoppingCart,
   TrendingUp, Repeat2, Shield, Vault,
-  Gem, ExternalLink,
+  Gem, ExternalLink, Droplets,
 } from "lucide-react";
 import { CONTRACT_ADDRESSES } from "../../config/contracts";
 import { shortenAddress } from "../../utils/formatters";
@@ -10,6 +10,7 @@ import { useRole, Role } from "../../hooks/useRole";
 import { useAccount } from "wagmi";
 import { useTokenBalance } from "../../hooks/useERC20";
 import { formatToken } from "../../utils/formatters";
+import { AppKitAccountButton, AppKitButton } from "@reown/appkit/react";
 
 interface NavItem {
   to: string;
@@ -21,11 +22,12 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { to: "/",            icon: LayoutDashboard, label: "Dashboard",   end: true },
-  { to: "/nfts",        icon: Image,           label: "My NFTs" },
   { to: "/marketplace", icon: ShoppingCart,    label: "Marketplace" },
+  { to: "/faucet",      icon: Droplets,        label: "Faucet" },
   { to: "/staking",     icon: TrendingUp,      label: "Staking" },
   { to: "/borrow",      icon: Repeat2,         label: "Borrow" },
   // signer-only — rendered only for signers
+  { to: "/inventory", icon: Image, label: "NFT Inventory", requiredRole: "signer" },
   { to: "/governance",  icon: Shield,          label: "Governance",  requiredRole: "signer" },
   { to: "/treasury",    icon: Vault,           label: "Treasury",    requiredRole: "signer" },
 ];
@@ -121,7 +123,7 @@ export function Sidebar() {
             </div>
             {/* Connect / disconnect */}
             <div className="pt-1">
-              <w3m-button size="sm" />
+              <AppKitAccountButton />
             </div>
           </div>
         </div>
@@ -130,14 +132,14 @@ export function Sidebar() {
       {/* Not connected */}
       {!isConnected && (
         <div className="px-3 pb-3">
-          <w3m-button size="sm" />
+          <AppKitButton />
         </div>
       )}
 
       {/* Contract link */}
       <div className="p-3 border-t border-slate-100">
         <a
-          href={`https://explorer.hashkey.cloud/address/${CONTRACT_ADDRESSES.diamond}`}
+          href={`https://testnet-explorer.hsk.xyz/address/${CONTRACT_ADDRESSES.diamond}`}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-slate-50 transition-colors group"

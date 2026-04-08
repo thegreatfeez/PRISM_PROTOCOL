@@ -4,6 +4,7 @@ import {
   Gem, TrendingUp, ShoppingCart, Repeat2, ArrowRight,
   Coins, Users, Activity
 } from "lucide-react";
+import { AppKitButton } from "@reown/appkit/react";
 import { PageHeader } from "../components/layout/Layout";
 import { StatCard } from "../components/ui/index";
 import { Card, CardHeader, CardTitle } from "../components/ui/Card";
@@ -25,7 +26,7 @@ function ConnectPrompt() {
       <p className="text-slate-500 text-sm max-w-xs text-center">
         Connect your wallet to access gaming assets, staking, borrowing, and the marketplace.
       </p>
-      <w3m-button />
+      <AppKitButton />
     </div>
   );
 }
@@ -48,10 +49,10 @@ export function Dashboard() {
 
   const actions = [
     {
-      to: "/nfts",
+      to: "/marketplace?view=nfts&filter=mine",
       icon: Gem,
       label: "My NFTs",
-      description: "View and manage your gaming assets",
+      description: "View and manage your gaming assets (inside Marketplace)",
       color: "violet" as const,
       badge: userNFTBalance ? `${userNFTBalance.toString()} owned` : undefined,
     },
@@ -182,11 +183,11 @@ export function Dashboard() {
         <Card>
           <CardHeader>
             <CardTitle>Multisig Governance</CardTitle>
-            {required && multisigOwners && (
-              <Badge color="violet">
-                {required.toString()}/{multisigOwners.length} required
-              </Badge>
-            )}
+              {required !== undefined && multisigOwners && (
+                <Badge color="violet">
+                  {required.toString()}/{multisigOwners.length} required
+                </Badge>
+              )}
           </CardHeader>
           {multisigOwners && multisigOwners.length > 0 ? (
             <div className="space-y-2">
@@ -196,7 +197,7 @@ export function Dashboard() {
                     <span className="text-white text-xs font-bold">{i + 1}</span>
                   </div>
                   <a
-                    href={`https://explorer.hashkey.cloud/address/${owner}`}
+                    href={`https://testnet-explorer.hsk.xyz/address/${owner}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-sm text-slate-600 hover:text-violet-600 font-mono transition-colors"
