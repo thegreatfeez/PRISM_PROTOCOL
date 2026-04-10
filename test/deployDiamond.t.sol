@@ -226,6 +226,24 @@ contract ProtocolFlowTest is TestHelpers {
         }
     }
 
+    function testMintStillWorksWhenVrfUnavailable() public {
+        // Simulate missing VRF config after an upgrade/migration.
+        VRFFacet(address(diamond)).setReqData(ReqData({
+            subscriptionId: 0,
+            keyHash: bytes32(0),
+            callbackGasLimit: 0,
+            requestConfirmations: 0,
+            numWords: 0,
+            vrfCoordinator: address(0)
+        }));
+
+        _warpToWallClock();
+        _adminCall(address(diamond), abi.encodeWithSelector(ERC721Facet.mint.selector));
+
+        assertEq(ERC721Facet(address(diamond)).totalSupply(), 1);
+        assertEq(ERC721Facet(address(diamond)).ownerOf(1), address(diamond));
+    }
+
     function testMarketplaceListAndBuy() public {
         _setupEconomics();
         _adminCall(address(diamond),

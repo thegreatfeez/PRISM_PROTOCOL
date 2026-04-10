@@ -10,8 +10,21 @@ contract StakingFacet {
     event Staked(address indexed staker, uint256 indexed tokenId);
     event Unstaked(address indexed staker, uint256 indexed tokenId);
 
+    /// @notice One-time setup when no stake tiers exist yet (same effect as setStakeDurations + setRewardSplit).
+    function initStaking(uint256[] calldata _durations, uint256[] calldata _rewardBps, uint256 _stakerBps) external {
+        LibMultisig.enforceIsMultisig();
+        require(s.stakeDurations.length == 0, "Staking: already initialized");
+        require(_stakerBps <= 10000, "Staking: invalid reward bps");
+        _setStakeDurations(_durations, _rewardBps);
+        s.stakerRewardBps = _stakerBps;
+    }
+
     function setStakeDurations(uint256[] calldata _durations, uint256[] calldata _rewardBps) external {
         LibMultisig.enforceIsMultisig();
+        _setStakeDurations(_durations, _rewardBps);
+    }
+
+    function _setStakeDurations(uint256[] calldata _durations, uint256[] calldata _rewardBps) internal {
         require(_durations.length == _rewardBps.length, "Staking: length mismatch");
         require(_durations.length > 0, "Staking: empty");
 

@@ -115,7 +115,10 @@ contract ERC721Facet is IERC721 {
         uint256 tokenId = s.totalNFTSupply;
         s.tokenIdToOwner[tokenId] = _to;
         s.addressToNFTBalance[_to] += 1;
-        IVRFFacet(address(this)).getWords(tokenId);
+        // Keep minting available even if VRF config/coordinator is temporarily unavailable.
+        // Traits remain unset until a valid randomness request can be made.
+        (bool vrfOk, ) = address(this).call(abi.encodeWithSelector(IVRFFacet.getWords.selector, tokenId));
+        vrfOk;
         emit Transfer(address(0), _to, tokenId);
     }
 

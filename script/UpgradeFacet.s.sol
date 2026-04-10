@@ -18,29 +18,28 @@ import {StakingFacet} from "../contracts/facets/StakingFacet.sol";
 import {TreasuryFacet} from "../contracts/facets/TreasuryFacet.sol";
 import {SVGFacet} from "../contracts/facets/SVGFacet.sol";
 import {VRFFacet} from "../contracts/facets/VRFFacet.sol";
+import {FaucetFacet} from "../contracts/facets/FaucetFacet.sol";
 
 contract UpgradeFacet is Script, DiamondUpgradeHelper {
-    address constant DIAMOND = 0x20B07c3d614482d561076884482be5B431e6862f; // replace with your diamond address
-
-    function run() external {
+function run() external {
+        address diamond = vm.envAddress("DIAMOND");
         string memory facetName = vm.envString("FACET");
         vm.startBroadcast();
-        _upgrade(facetName);
+        _upgrade(diamond, facetName);
         vm.stopBroadcast();
     }
 
-    function _upgrade(string memory facetName) internal {
+    function _upgrade(address diamond, string memory facetName) internal {
         address newFacet = _deployFacet(facetName);
 
-        IDiamondLoupe loupe = IDiamondLoupe(DIAMOND);
-        IDiamondCut.FacetCut memory cut = buildReplaceCutByName(loupe, newFacet, facetName);
+        IDiamondLoupe loupe = IDiamondLoupe(diamond);
+        // IMPORTANT: when a facet gains new functions, we need BOTH:
+        // - Replace existing selectors to point at the new facet implementation
+        // - Add any selectors that are missing on the diamond
+        IDiamondCut.FacetCut[] memory cuts = buildExtendCutsByName(loupe, newFacet, facetName);
+        require(cuts.length > 0, string.concat("UpgradeFacet: no selectors found for ", facetName));
 
-        require(cut.functionSelectors.length > 0, string.concat("UpgradeFacet: no selectors found for ", facetName));
-
-        IDiamondCut.FacetCut[] memory cuts = new IDiamondCut.FacetCut[](1);
-        cuts[0] = cut;
-
-        _multisigCut(cuts);
+        _multisigCut(diamond, cuts);
 
         console.log("Upgraded", facetName, "->", newFacet);
     }
@@ -60,19 +59,20 @@ contract UpgradeFacet is Script, DiamondUpgradeHelper {
         if (nameHash == keccak256("OwnershipFacet"))   return address(new OwnershipFacet());
         if (nameHash == keccak256("DiamondLoupeFacet")) return address(new DiamondLoupeFacet());
         if (nameHash == keccak256("DiamondCutFacet"))  return address(new DiamondCutFacet());
+        if (nameHash == keccak256("FaucetFacet"))     return address(new FaucetFacet());
 
         revert(string.concat("UpgradeFacet: unknown facet ", facetName));
     }
 
-    function _multisigCut(IDiamondCut.FacetCut[] memory cuts) internal {
+    function _multisigCut(address diamond, IDiamondCut.FacetCut[] memory cuts) internal {
         bytes memory callData = abi.encodeWithSelector(
             IDiamondCut.diamondCut.selector,
             cuts,
             address(0),
             ""
         );
-        uint256 proposalId = MultisigFacet(DIAMOND).propose(callData);
-        MultisigFacet(DIAMOND).approve(proposalId);
-        MultisigFacet(DIAMOND).execute(proposalId);
+        uint256 proposalId = MultisigFacet(diamond).propose(callData);
+        MultisigFacet(diamond).approve(proposalId);
+        MultisigFacet(diamond).execute(proposalId);
     }
 }

@@ -1,0 +1,326 @@
+import { useState } from "react";
+import { ExternalLink, Shield, Swords, Wand2, Loader2 } from "lucide-react";
+import { Badge } from "../ui/index";
+import { useTokenData, useTokenURI, useOwnerOf } from "../../hooks/useERC721";
+import { useStakeInfo } from "../../hooks/useStaking";
+import { useListing } from "../../hooks/useMarketplace";
+import { useBorrowInfo } from "../../hooks/useBorrow";
+import { formatToken, getTraitType, timeRemaining, isExpired, tokenUrl, formatDeadline } from "../../utils/formatters";
+import { Button } from "../ui/Button";
+import { DIAMOND_ADDRESS } from "../../config/contracts";
+import { useAccount } from "wagmi";
+
+interface NFTCardProps {
+  tokenId: bigint;
+  showOwner?: boolean;
+  actionLabel?: string;
+  onAction?: (tokenId: bigint) => void;
+  secondaryActionLabel?: string;
+  onSecondaryAction?: (tokenId: bigint) => void;
+  selected?: boolean;
+  onClick?: (tokenId: bigint) => void;
+}
+
+function TraitIcon({ mage, attack, defense }: { mage: boolean; attack: number; defense: number }) {
+  const trait = getTraitType(mage, attack, defense);
+  if (trait === "Mage") return <Wand2 size={12} />;
+  if (trait === "Attack") return <Swords size={12} />;
+  return <Shield size={12} />;
+}
+
+function traitBadgeColor(mage: boolean, attack: number, defense: number): "violet" | "rose" | "sky" {
+  const t = getTraitType(mage, attack, defense);
+  if (t === "Mage") return "violet";
+  if (t === "Attack") return "rose";
+  return "sky";
+}
+
+// Parse and render on-chain base64 SVG tokenURI
+function NFTImage({ tokenId }: { tokenId: bigint }) {
+  const { data: uri, isLoading } = useTokenURI(tokenId);
+  const [imgError, setImgError] = useState(false);
+
+  if (isLoading) {
+    return (
+      <div className="w-full aspect-square bg-gradient-to-br from-violet-50 to-sky-50 rounded-xl flex items-center justify-center">
+        <Loader2 size={24} className="text-violet-300 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!uri || imgError) {
+    return (
+      <div className="w-full aspect-square bg-gradient-to-br from-violet-100 to-sky-100 rounded-xl flex items-center justify-center">
+        <span className="text-2xl font-bold text-violet-300 font-display">#{tokenId.toString()}</span>
+      </div>
+    );
+  }
+
+  // tokenURI is a data:application/json;base64,... — parse to get image
+  let imageUrl = "";
+  try {
+    if (uri.startsWith("data:application/json;base64,")) {
+      const json = JSON.parse(atob(uri.split(",")[1]));
+      imageUrl = json.image || "";
+    } else if (uri.startsWith("data:image/")) {
+      imageUrl = uri;
+    }
+  } catch {
+    imageUrl = uri;
+  }
+
+  return (
+    <div className="w-full aspect-square rounded-xl overflow-hidden bg-slate-50">
+      <img
+        src={imageUrl}
+        alt={`Prism NFT #${tokenId}`}
+        className="w-full h-full object-cover"
+        onError={() => setImgError(true)}
+      />
+    </div>
+  );
+}
+
+function StatusBadge({
+  viewer,
+  owner,
+  isListed,
+  isStaked,
+  borrowInfo,
+}: {
+  viewer?: string;
+  owner?: string;
+  isListed: boolean;
+  isStaked: boolean;
+  borrowInfo?: readonly [`0x${string}`, `0x${string}`, bigint, bigint];
+}) {
+  const zero = "0x0000000000000000000000000000000000000000";
+  const protocolOwner = DIAMOND_ADDRESS.toLowerCase();
+  const viewerLc = (viewer ?? "").toLowerCase();
+  const ownerLc = (owner ?? "").toLowerCase();
+  const isProtocolHeld = !!owner && ownerLc === protocolOwner;
+
+  const borrower = borrowInfo?.[0] ?? (zero as `0x${string}`);
+  const lender = borrowInfo?.[1] ?? (zero as `0x${string}`);
+  const deadline = borrowInfo?.[3] ?? 0n;
+  const isBorrowed = borrower !== zero;
+  const expired = isExpired(deadline);
+
+  const isOwner = !!viewer && !!owner && viewerLc === ownerLc;
+  const isBorrower = !!viewer && borrower.toLowerCase() === viewerLc;
+  const isLender = !!viewer && lender.toLowerCase() === viewerLc;
+
+  // Borrow is most important; wording depends on whose perspective.
+  if (isBorrowed) {
+    if (isBorrower) {
+      return (
+        <Badge color={expired ? "rose" : "amber"} dot>
+          {expired ? "Overdue" : `Borrowing · ${timeRemaining(deadline)}`}
+        </Badge>
+      );
+    }
+    if (isLender) return <Badge color={expired ? "rose" : "amber"} dot>{expired ? "Loan overdue" : "On loan"}</Badge>;
+    return <Badge color={expired ? "rose" : "amber"} dot>{expired ? "Overdue" : "Borrowed"}</Badge>;
+  }
+
+  // Owner lifecycle emphasis: Listed -> Staked -> (Borrowed handled above) -> Owned
+  if (isOwner) {
+    if (isListed) return <Badge color="sky" dot>Listed</Badge>;
+    if (isStaked) return <Badge color="emerald" dot>Staked</Badge>;
+    return <Badge color="violet" dot>Owned</Badge>;
+  }
+
+  // Non-owner view
+  // Protocol-held NFTs are not "owned" yet; treat them as "Available" unless listed/staked/borrowed.
+  if (isProtocolHeld) {
+    if (isListed) return <Badge color="sky" dot>Listed</Badge>;
+    if (isStaked) return <Badge color="emerald" dot>Staked</Badge>;
+    return <Badge color="slate" dot>Available</Badge>;
+  }
+  if (isListed) return <Badge color="sky" dot>Listed</Badge>;
+  if (isStaked) return <Badge color="emerald" dot>Staked</Badge>;
+  if (owner) return <Badge color="slate" dot>Owned</Badge>;
+  return <Badge color="slate" dot>Unknown</Badge>;
+}
+
+export function NFTCard({
+  tokenId,
+  showOwner = false,
+  actionLabel,
+  onAction,
+  secondaryActionLabel,
+  onSecondaryAction,
+  selected = false,
+  onClick,
+}: NFTCardProps) {
+  const { address: viewer } = useAccount();
+  const { data: tokenData } = useTokenData(tokenId);
+  const { data: owner } = useOwnerOf(tokenId);
+  const { data: listing } = useListing(tokenId);
+  const { data: stake } = useStakeInfo(tokenId);
+  const { data: borrow } = useBorrowInfo(tokenId);
+
+  const attack = tokenData?.attack ?? 0;
+  const defense = tokenData?.defense ?? 0;
+  const mage = tokenData?.mage ?? false;
+  const trait = getTraitType(mage, attack, defense);
+  const price = listing?.[1] ?? 0n;
+  const isListed = listing?.[2] ?? false;
+  const isStaked = !!stake && stake[0] !== "0x0000000000000000000000000000000000000000";
+  const isBorrowed = !!borrow && borrow[0] !== "0x0000000000000000000000000000000000000000";
+  const stakerAddr = stake?.[0] as `0x${string}` | undefined;
+  const stakeExpiry = stake?.[1] ?? 0n;
+  const viewerIsStaker =
+    !!viewer && !!stakerAddr && stakerAddr.toLowerCase() !== "0x0000000000000000000000000000000000000000" && stakerAddr.toLowerCase() === viewer.toLowerCase();
+
+  const disableStakePrimary =
+    (actionLabel?.toLowerCase() === "stake") && (isStaked || isListed || isBorrowed);
+  const stakePrimaryTitle = disableStakePrimary
+    ? isListed
+      ? "Already listed"
+      : isBorrowed
+        ? "Currently borrowed"
+        : "Already staked"
+    : undefined;
+
+  const disableSecondary =
+    (secondaryActionLabel?.toLowerCase().includes("list") ?? false) && (isListed || isStaked || isBorrowed);
+  const secondaryDisabledTitle = disableSecondary
+    ? isListed
+      ? "Already listed"
+      : isBorrowed
+        ? "Currently borrowed"
+        : "Currently staked"
+    : undefined;
+
+  return (
+    <div
+      onClick={() => onClick?.(tokenId)}
+      className={[
+        "bg-white rounded-2xl border overflow-hidden transition-all duration-200",
+        "hover:shadow-lg hover:-translate-y-0.5",
+        selected
+          ? "border-violet-400 ring-2 ring-violet-200 shadow-md"
+          : "border-slate-100 shadow-sm",
+        onClick ? "cursor-pointer" : "",
+      ].join(" ")}
+    >
+      {/* Image */}
+      <div className="p-3 pb-0">
+        <div className="relative">
+          <NFTImage tokenId={tokenId} />
+          <div className="absolute top-2 left-2">
+            <StatusBadge viewer={viewer ?? undefined} owner={owner ?? undefined} isListed={isListed} isStaked={isStaked} borrowInfo={borrow as any} />
+          </div>
+          <div className="absolute top-2 right-2">
+            <Badge color={traitBadgeColor(mage, attack, defense)} size="sm">
+              <TraitIcon mage={mage} attack={attack} defense={defense} />
+              {trait}
+            </Badge>
+          </div>
+        </div>
+      </div>
+
+      {/* Info */}
+      <div className="p-3">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-sm font-bold text-slate-800 font-display">
+            Prism #{tokenId.toString()}
+          </p>
+          {isListed && price > 0n && (
+            <p className="text-xs font-semibold text-violet-700 bg-violet-50 px-2 py-0.5 rounded-lg">
+              {formatToken(price)} PRM
+            </p>
+          )}
+        </div>
+
+        {isStaked && viewerIsStaker && stakeExpiry > 0n && (
+          <div
+            className={`mb-3 rounded-xl border px-3 py-2 text-xs ${
+              isExpired(stakeExpiry)
+                ? "bg-amber-50 border-amber-200 text-amber-900"
+                : "bg-amber-50 border-amber-100 text-amber-800"
+            }`}
+          >
+            <p className="font-semibold">Your staked position</p>
+            <p className="mt-0.5">
+              {isExpired(stakeExpiry) ? (
+                <>Lock ended ({formatDeadline(stakeExpiry)}). Unstake on the Staking page if not borrowed.</>
+              ) : (
+                <>Unlocks {formatDeadline(stakeExpiry)} · unstake on the Staking page after expiry (if not borrowed).</>
+              )}
+            </p>
+          </div>
+        )}
+
+        {/* Stats */}
+        <div className="flex gap-2 mb-3">
+          <div className="flex-1 bg-rose-50 rounded-lg p-1.5 text-center">
+            <p className="text-xs text-rose-400 font-medium">ATK</p>
+            <p className="text-sm font-bold text-rose-600">{attack}</p>
+          </div>
+          <div className="flex-1 bg-sky-50 rounded-lg p-1.5 text-center">
+            <p className="text-xs text-sky-400 font-medium">DEF</p>
+            <p className="text-sm font-bold text-sky-600">{defense}</p>
+          </div>
+          <div className="flex-1 bg-violet-50 rounded-lg p-1.5 text-center">
+            <p className="text-xs text-violet-400 font-medium">TYPE</p>
+            <p className="text-xs font-bold text-violet-600 truncate">{mage ? "Mage" : "Fighter"}</p>
+          </div>
+        </div>
+
+        {/* Owner */}
+        {showOwner && owner && (
+          <a
+            href={tokenUrl(DIAMOND_ADDRESS, tokenId)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="flex items-center gap-1 text-xs text-slate-400 hover:text-violet-600 transition-colors mb-2"
+          >
+            <ExternalLink size={10} />
+            View NFT on explorer
+          </a>
+        )}
+
+        {/* Actions */}
+        {(actionLabel || secondaryActionLabel) && (
+          <div className="flex gap-2">
+            {actionLabel && onAction && (
+              <Button
+                variant="primary"
+                size="sm"
+                fullWidth
+                disabled={disableStakePrimary}
+                title={stakePrimaryTitle}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (disableStakePrimary) return;
+                  onAction(tokenId);
+                }}
+              >
+                {actionLabel}
+              </Button>
+            )}
+            {secondaryActionLabel && onSecondaryAction && (
+              <Button
+                variant="secondary"
+                size="sm"
+                fullWidth
+                disabled={disableSecondary}
+                title={secondaryDisabledTitle}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (disableSecondary) return;
+                  onSecondaryAction(tokenId);
+                }}
+              >
+                {secondaryActionLabel}
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
