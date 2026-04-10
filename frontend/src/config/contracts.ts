@@ -1,21 +1,22 @@
 // ─── Contract Addresses ────────────────────────────────────────────────────
 
-export const DIAMOND_ADDRESS = "0x6e6742bA7C02214C2B798954f1084d94E7f02b0C" as const;
+export const DIAMOND_ADDRESS = "0x5A9E09a12f3513F72161976818e87574bf9aD1E1" as const;
 
 export const CONTRACT_ADDRESSES = {
   diamond: DIAMOND_ADDRESS,
-  diamondCutFacet: "0x376bDf7EF380D2868E80F570559a211A82061a9F",
-  diamondLoupeFacet: "0x9A20C36A7ADE62E50C682707D2e8278d8Daf805C",
-  ownershipFacet: "0x1b65a91a889887a65e5f59F52A161D92359E493a",
-  erc721Facet: "0xef571eCD58Ee26e3c4Ca6bE8CAb6a88ABC58a6A7",
-  erc20Facet: "0xe7Fa28e17bE54A8a1C30D8F6638f8c42BBC5fad2",
-  borrowFacet: "0xc9CFdd1150F6048Ce90d215D971Ed327BC45D45A",
-  marketplaceFacet: "0x1AE32dfD7f063a13134CDCd5C194631843e158c0",
-  stakingFacet: "0x41271490144e382B51457f2e09F6ad3eDEFC1fb8",
-  multisigFacet: "0xF5CaeC80ab327B5D0988974d938F29DB66eFF8D7",
-  treasuryFacet: "0xb3efE937539B09979A75D119441ed3869E899AeF",
-  vrfFacet: "0x0b6E66E0E3f1f7d35C8dD209017D30CeB303D0c3",
-  svgFacet: "0xA2Af6b7216Cb77f00BE9D4e70d20894cBd40e8c6",
+  diamondCutFacet: "0x70D428e9a61F4Ee4aC0Db823413f9248f618A480",
+  diamondLoupeFacet: "0x1D1F2A70C15634c484Ef13d060e7809538AC8878",
+  ownershipFacet: "0x20B07c3d614482d561076884482be5B431e6862f",
+  erc721Facet: "0x9db71D29D55Ff2aFd1803b4E61a5b470eb807881",
+  erc20Facet: "0x04323E8EB6655654021D169B4389Db7e33Aacd28",
+  borrowFacet: "0xFC7e730b46ea01601ea2a9F43053E4004348F8B4",
+  marketplaceFacet: "0xe593704a5Aa233641C5a43Ca198f8d1D1fcd3E8C",
+  stakingFacet: "0xf173271fbfc1d30FC25b6eE33Aa04B76033295dE",
+  multisigFacet: "0xc021cEdc29Abc538C281541258D896DF3dec94D4",
+  treasuryFacet: "0x4F3F1cB798eB36082b9Fecf84fC9b597B3d02d3A",
+  vrfFacet: "0x39FD1c27337FB54dC961aAcc6704116f8EA056Eb",
+  svgFacet: "0x4eD44326AAe00ECD10a97f30C891847d2c7c5D1f",
+  faucetFacet: "0xF8d827ab460371E1161AAed013f4519a11986219",
 } as const;
 
 // ─── ABIs ──────────────────────────────────────────────────────────────────
@@ -79,6 +80,7 @@ export const MARKETPLACE_ABI = [
 export const STAKING_ABI = [
   { name: "getStakeDurations", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "durations", type: "uint256[]" }, { name: "rewardBps", type: "uint256[]" }] },
   { name: "getStakeInfo", type: "function", stateMutability: "view", inputs: [{ name: "_tokenId", type: "uint256" }], outputs: [{ name: "staker", type: "address" }, { name: "stakeExpiry", type: "uint256" }, { name: "rewardBps", type: "uint256" }] },
+  { name: "initStaking", type: "function", stateMutability: "nonpayable", inputs: [{ name: "_durations", type: "uint256[]" }, { name: "_rewardBps", type: "uint256[]" }, { name: "_stakerBps", type: "uint256" }], outputs: [] },
   { name: "setRewardSplit", type: "function", stateMutability: "nonpayable", inputs: [{ name: "_stakerBps", type: "uint256" }], outputs: [] },
   { name: "setStakeDurations", type: "function", stateMutability: "nonpayable", inputs: [{ name: "_durations", type: "uint256[]" }, { name: "_rewardBps", type: "uint256[]" }], outputs: [] },
   { name: "stake", type: "function", stateMutability: "nonpayable", inputs: [{ name: "_tokenId", type: "uint256" }, { name: "_duration", type: "uint256" }, { name: "_price", type: "uint256" }], outputs: [] },

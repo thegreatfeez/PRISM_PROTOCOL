@@ -130,7 +130,11 @@ export function BuyNFTModal({ isOpen, onClose, tokenId, onSuccess, onError }: Bu
   const { data: balance } = useTokenBalance(address);
   const { buyNFT, isPending: buying, isSuccess: bought } = useBuyNFT();
 
+  const seller = listing?.[0] ?? "";
   const price = listing?.[1] ?? 0n;
+  const isSeller =
+    !!address && seller.startsWith("0x") && seller.toLowerCase() === address.toLowerCase();
+
   const hasEnoughBalance = balance !== undefined && (balance as bigint) >= price;
 
   useEffect(() => {
@@ -158,20 +162,33 @@ export function BuyNFTModal({ isOpen, onClose, tokenId, onSuccess, onError }: Bu
           </div>
         </div>
 
-        {!hasEnoughBalance && (
+        {isSeller && (
+          <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
+            You cannot buy your own listing — the marketplace rejects purchases from the seller.
+          </div>
+        )}
+
+        {!hasEnoughBalance && !isSeller && (
           <div className="bg-rose-50 border border-rose-100 rounded-xl p-3 text-xs text-rose-600">
             Insufficient PRM balance to purchase this NFT.
           </div>
         )}
 
-        {hasEnoughBalance && (
+        {hasEnoughBalance && !isSeller && (
           <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs text-slate-600">
             This protocol uses an internal PRM balance ledger (not ERC20 `transferFrom`), so no token spending approval is required to buy.
           </div>
         )}
 
-        <Button fullWidth variant="primary" loading={buying} disabled={!hasEnoughBalance || buying} onClick={() => buyNFT(tokenId)}>
-          {!hasEnoughBalance ? "Insufficient Balance" : "Confirm Purchase"}
+        <Button
+          fullWidth
+          variant="primary"
+          loading={buying}
+          disabled={isSeller || !hasEnoughBalance || buying}
+          title={isSeller ? "You are the seller of this listing" : undefined}
+          onClick={() => buyNFT(tokenId)}
+        >
+          {isSeller ? "Cannot buy own listing" : !hasEnoughBalance ? "Insufficient Balance" : "Confirm Purchase"}
         </Button>
       </div>
     </Modal>

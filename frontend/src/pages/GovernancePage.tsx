@@ -81,8 +81,63 @@ const PROPOSAL_ACTIONS: ActionDef[] = [
   { key: "setPlatformFee", label: "Set Platform Fee", description: "Update marketplace commission rate", category: "Marketplace", abi: MARKETPLACE_ABI, functionName: "setPlatformFee", fields: [{ name: "_feeBps", label: "Fee (basis points)", type: "uint256", placeholder: "250", hint: "100 bps = 1%" }] },
   // Borrow
   { key: "setERC20PerEth", label: "Set Token Rate", description: "How many PRM equal 1 ETH for borrow collateral math", category: "Borrow", abi: BORROW_ABI, functionName: "setERC20PerEth", fields: [{ name: "_erc20PerEth", label: "PRM per 1 ETH", type: "uint256", placeholder: "1000", hint: "Whole or decimal PRM per one ETH", humanDecimals: 18, humanSymbol: "PRM" }] },
-  // Staking
-  { key: "setRewardSplit", label: "Set Reward Split", description: "Update staker reward percentage", category: "Staking", abi: STAKING_ABI, functionName: "setRewardSplit", fields: [{ name: "_stakerBps", label: "Staker Share (bps)", type: "uint256", placeholder: "8000", hint: "8000 = 80%" }] },
+  // Staking (human-friendly: days + percents 0–100 in UI → seconds + bps on-chain)
+  {
+    key: "setStakeDurations",
+    label: "Set Stake Durations",
+    description: "Replace all lock tiers and per-tier staker fee share (borrow fee split)",
+    category: "Staking",
+    abi: STAKING_ABI,
+    functionName: "setStakeDurations",
+    fields: [
+      {
+        name: "_durations",
+        label: "Lock length per tier (days, comma-separated)",
+        type: "uint256[]",
+        placeholder: "7, 30, 90",
+        hint: "Converted to seconds on-chain (×86400)",
+      },
+      {
+        name: "_rewardBps",
+        label: "Staker share of borrow fee per tier (percent 0–100, comma-separated)",
+        type: "uint256[]",
+        placeholder: "75, 80, 85",
+        hint: "Same length as tiers; converted to basis points (×100)",
+      },
+    ],
+  },
+  {
+    key: "initStaking",
+    label: "Initialize Staking (once)",
+    description: "Only when no tiers exist yet — sets tiers + global staker split (same as fresh deploy path)",
+    category: "Staking",
+    abi: STAKING_ABI,
+    functionName: "initStaking",
+    fields: [
+      {
+        name: "_durations",
+        label: "Lock length per tier (days, comma-separated)",
+        type: "uint256[]",
+        placeholder: "3, 7, 14",
+        hint: "Converted to seconds (×86400)",
+      },
+      {
+        name: "_rewardBps",
+        label: "Staker share per tier (percent 0–100, comma-separated)",
+        type: "uint256[]",
+        placeholder: "70, 80, 90",
+        hint: "Same length as tiers; converted to bps (×100)",
+      },
+      {
+        name: "_stakerBps",
+        label: "Global staker share of borrow fee (percent 0–100)",
+        type: "uint256",
+        placeholder: "80",
+        hint: "Converted to basis points (×100), e.g. 80 → 8000",
+      },
+    ],
+  },
+  { key: "setRewardSplit", label: "Set Reward Split", description: "Update global staker reward percentage (borrow fee)", category: "Staking", abi: STAKING_ABI, functionName: "setRewardSplit", fields: [{ name: "_stakerBps", label: "Staker share (percent 0–100)", type: "uint256", placeholder: "80", hint: "e.g. 80 → 8000 bps on-chain" }] },
   // Admin
   { key: "transferOwnership", label: "Transfer Ownership", description: "Transfer diamond ownership", category: "Admin", abi: OWNERSHIP_ABI, functionName: "transferOwnership", fields: [{ name: "_newOwner", label: "New Owner Address", type: "address", placeholder: "0x..." }] },
   { key: "setFaucetAmount", label: "Faucet: Claim Amount", description: "PRM amount per faucet claim (multisig)", category: "Faucet", abi: FAUCET_ABI, functionName: "setFaucetAmount", fields: [{ name: "_amount", label: "Amount per claim", type: "uint256", placeholder: "100", hint: "PRM each user receives per claim", humanDecimals: 18, humanSymbol: "PRM" }] },
@@ -178,6 +233,16 @@ function formatExtraInit(name: string, args: readonly unknown[]): string[] {
       `Decimals: ${String(args[2])}`,
     ];
   }
+  if (name === "initStaking") {
+    const durs = args[0] as bigint[];
+    const bps = args[1] as bigint[];
+    const globalBps = args[2] as bigint;
+    return [
+      `Tiers: ${durs.length} (durations in seconds: ${durs.map((x) => x.toString()).join(", ")})`,
+      `Per-tier staker bps: ${bps.map((x) => x.toString()).join(", ")}`,
+      `Global staker bps: ${globalBps.toString()}`,
+    ];
+  }
   return args.map((a, i) => `Arg ${i + 1}: ${String(a)}`);
 }
 
@@ -219,6 +284,10 @@ function decodeProposalCalldata(callData: string | undefined): DecodedProposal {
       abi: ERC20_ABI as Abi,
       map: { initERC20: { label: "Initialize ERC20 token", category: "Token" } },
     },
+    {
+      abi: STAKING_ABI as Abi,
+      map: { initStaking: { label: "Initialize staking (once)", category: "Staking" } },
+    },
   ];
   for (const { abi, map } of extras) {
     try {
@@ -256,7 +325,67 @@ function parseUint256Field(f: FieldDef, raw: string): bigint {
   return BigInt(val);
 }
 
+function parseCommaSeparatedDaysToSeconds(csv: string): bigint[] {
+  const parts = csv.split(",").map((s) => s.trim()).filter(Boolean);
+  if (!parts.length) throw new Error("Enter at least one day value (comma-separated).");
+  return parts.map((p) => {
+    const n = Number(p);
+    if (!Number.isFinite(n) || n <= 0) throw new Error(`Invalid day value: ${p}`);
+    return BigInt(Math.round(n * 86400));
+  });
+}
+
+function parseCommaSeparatedPercentsToBps(csv: string): bigint[] {
+  const parts = csv.split(",").map((s) => s.trim()).filter(Boolean);
+  if (!parts.length) throw new Error("Enter at least one percent (comma-separated).");
+  return parts.map((p) => {
+    const n = Number(p);
+    if (!Number.isFinite(n) || n <= 0 || n > 100) throw new Error(`Invalid percent (use 0–100 per tier): ${p}`);
+    return BigInt(Math.round(n * 100));
+  });
+}
+
+function parseSinglePercentToBps(raw: string): bigint {
+  const n = Number(raw.trim());
+  if (!Number.isFinite(n) || n < 0 || n > 100) throw new Error("Enter a percent from 0 to 100.");
+  return BigInt(Math.round(n * 100));
+}
+
 function buildCalldata(action: ActionDef, values: Record<string, string>): `0x${string}` {
+  if (action.key === "setRewardSplit") {
+    const bps = parseSinglePercentToBps(values["_stakerBps"] ?? "");
+    return encodeFunctionData({
+      abi: action.abi as Abi,
+      functionName: "setRewardSplit",
+      args: [bps],
+    });
+  }
+  if (action.key === "setStakeDurations") {
+    const durations = parseCommaSeparatedDaysToSeconds(values["_durations"] ?? "");
+    const rewardBps = parseCommaSeparatedPercentsToBps(values["_rewardBps"] ?? "");
+    if (durations.length !== rewardBps.length) {
+      throw new Error("Number of day tiers must match number of percent tiers.");
+    }
+    return encodeFunctionData({
+      abi: action.abi as Abi,
+      functionName: "setStakeDurations",
+      args: [durations, rewardBps],
+    });
+  }
+  if (action.key === "initStaking") {
+    const durations = parseCommaSeparatedDaysToSeconds(values["_durations"] ?? "");
+    const rewardBps = parseCommaSeparatedPercentsToBps(values["_rewardBps"] ?? "");
+    if (durations.length !== rewardBps.length) {
+      throw new Error("Number of day tiers must match number of percent tiers.");
+    }
+    const stakerBps = parseSinglePercentToBps(values["_stakerBps"] ?? "");
+    return encodeFunctionData({
+      abi: action.abi as Abi,
+      functionName: "initStaking",
+      args: [durations, rewardBps, stakerBps],
+    });
+  }
+
   if (action.mintToDiamond && action.functionName === "mintERC20") {
     const val = (values["_amount"] ?? "").trim();
     const field = action.fields.find((x) => x.name === "_amount");

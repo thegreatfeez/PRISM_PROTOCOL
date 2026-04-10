@@ -5,7 +5,7 @@ import { useTokenData, useTokenURI, useOwnerOf } from "../../hooks/useERC721";
 import { useStakeInfo } from "../../hooks/useStaking";
 import { useListing } from "../../hooks/useMarketplace";
 import { useBorrowInfo } from "../../hooks/useBorrow";
-import { formatToken, getTraitType, timeRemaining, isExpired, tokenUrl } from "../../utils/formatters";
+import { formatToken, getTraitType, timeRemaining, isExpired, tokenUrl, formatDeadline } from "../../utils/formatters";
 import { Button } from "../ui/Button";
 import { DIAMOND_ADDRESS } from "../../config/contracts";
 import { useAccount } from "wagmi";
@@ -168,6 +168,21 @@ export function NFTCard({
   const isListed = listing?.[2] ?? false;
   const isStaked = !!stake && stake[0] !== "0x0000000000000000000000000000000000000000";
   const isBorrowed = !!borrow && borrow[0] !== "0x0000000000000000000000000000000000000000";
+  const stakerAddr = stake?.[0] as `0x${string}` | undefined;
+  const stakeExpiry = stake?.[1] ?? 0n;
+  const viewerIsStaker =
+    !!viewer && !!stakerAddr && stakerAddr.toLowerCase() !== "0x0000000000000000000000000000000000000000" && stakerAddr.toLowerCase() === viewer.toLowerCase();
+
+  const disableStakePrimary =
+    (actionLabel?.toLowerCase() === "stake") && (isStaked || isListed || isBorrowed);
+  const stakePrimaryTitle = disableStakePrimary
+    ? isListed
+      ? "Already listed"
+      : isBorrowed
+        ? "Currently borrowed"
+        : "Already staked"
+    : undefined;
+
   const disableSecondary =
     (secondaryActionLabel?.toLowerCase().includes("list") ?? false) && (isListed || isStaked || isBorrowed);
   const secondaryDisabledTitle = disableSecondary
@@ -219,6 +234,25 @@ export function NFTCard({
           )}
         </div>
 
+        {isStaked && viewerIsStaker && stakeExpiry > 0n && (
+          <div
+            className={`mb-3 rounded-xl border px-3 py-2 text-xs ${
+              isExpired(stakeExpiry)
+                ? "bg-amber-50 border-amber-200 text-amber-900"
+                : "bg-amber-50 border-amber-100 text-amber-800"
+            }`}
+          >
+            <p className="font-semibold">Your staked position</p>
+            <p className="mt-0.5">
+              {isExpired(stakeExpiry) ? (
+                <>Lock ended ({formatDeadline(stakeExpiry)}). Unstake on the Staking page if not borrowed.</>
+              ) : (
+                <>Unlocks {formatDeadline(stakeExpiry)} · unstake on the Staking page after expiry (if not borrowed).</>
+              )}
+            </p>
+          </div>
+        )}
+
         {/* Stats */}
         <div className="flex gap-2 mb-3">
           <div className="flex-1 bg-rose-50 rounded-lg p-1.5 text-center">
@@ -257,8 +291,11 @@ export function NFTCard({
                 variant="primary"
                 size="sm"
                 fullWidth
+                disabled={disableStakePrimary}
+                title={stakePrimaryTitle}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (disableStakePrimary) return;
                   onAction(tokenId);
                 }}
               >

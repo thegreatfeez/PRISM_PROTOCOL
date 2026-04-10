@@ -10,6 +10,7 @@ import { Button } from "../components/ui/Button";
 import { ToastContainer } from "../components/ui/Toast";
 import { useToast } from "../hooks/useToast";
 import { useTotalSupply } from "../hooks/useERC721";
+import { useStakeInfosBatch, isStakedTokenId } from "../hooks/useStaking";
 import { useReadContracts } from "wagmi";
 import { DIAMOND_ADDRESS, ERC721_ABI } from "../config/contracts";
 
@@ -90,21 +91,29 @@ export function NFTsPage() {
 
   // Batch fetch all owners in one multicall — much faster than per-card hooks
   const { ownerMap, isLoading: ownersLoading, refetch: refetchOwners } = useAllOwners(allIds);
+  const { stakerByTokenId, isLoading: stakesLoading, refetch: refetchStakes } = useStakeInfosBatch(allIds);
 
-  const refetchAll = () => { refetchSupply(); refetchOwners(); };
+  const refetchAll = () => {
+    refetchSupply();
+    refetchOwners();
+    refetchStakes();
+  };
 
-  // Apply filter
-  const displayIds = filter === "mine" && address
-    ? allIds.filter((id) => {
-        const owner = ownerMap.get(id.toString());
-        return owner?.toLowerCase() === address.toLowerCase();
-      })
-    : allIds;
+  const isMine = (id: bigint) => {
+    if (!address) return false;
+    const owner = ownerMap.get(id.toString());
+    const staker = stakerByTokenId.get(id.toString());
+    return (
+      owner?.toLowerCase() === address.toLowerCase() ||
+      staker?.toLowerCase() === address.toLowerCase()
+    );
+  };
 
-  const isLoading = supplyLoading || (totalCount > 0 && ownersLoading);
-  const myCount = address
-    ? allIds.filter((id) => ownerMap.get(id.toString())?.toLowerCase() === address.toLowerCase()).length
-    : 0;
+  // Apply filter — includes NFTs you staked (ERC721 owner is the diamond)
+  const displayIds = filter === "mine" && address ? allIds.filter(isMine) : allIds;
+
+  const isLoading = supplyLoading || (totalCount > 0 && (ownersLoading || stakesLoading));
+  const myCount = address ? allIds.filter(isMine).length : 0;
 
   return (
     <div className="space-y-6">
@@ -173,16 +182,18 @@ export function NFTsPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
           {displayIds.map((id) => {
             const owner = ownerMap.get(id.toString()) ?? "";
-            const isOwner = !!address && owner.toLowerCase() === address.toLowerCase();
+            const inWallet = !!address && owner.toLowerCase() === address.toLowerCase();
+            const staked = isStakedTokenId(stakerByTokenId, id);
+            const canStakeOrList = inWallet && !staked;
             return (
               <NFTCard
                 key={id.toString()}
                 tokenId={id}
-                showOwner={!isOwner}
-                actionLabel={isOwner ? "Stake" : undefined}
-                secondaryActionLabel={isOwner ? "List" : undefined}
-                onAction={isOwner ? () => { setSelectedToken(id); setStakeModalOpen(true); } : undefined}
-                onSecondaryAction={isOwner ? () => { setSelectedToken(id); setListModalOpen(true); } : undefined}
+                showOwner={!inWallet}
+                actionLabel={canStakeOrList ? "Stake" : undefined}
+                secondaryActionLabel={canStakeOrList ? "List" : undefined}
+                onAction={canStakeOrList ? () => { setSelectedToken(id); setStakeModalOpen(true); } : undefined}
+                onSecondaryAction={canStakeOrList ? () => { setSelectedToken(id); setListModalOpen(true); } : undefined}
               />
             );
           })}

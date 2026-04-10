@@ -515,20 +515,20 @@ The VRF architecture in the codebase is production-ready. Swapping from the mock
 
 | Contract | Address |
 |---|---|
-| Diamond | `0x6e6742bA7C02214C2B798954f1084d94E7f02b0C` |
-| DiamondCutFacet | `0x376bDf7EF380D2868E80F570559a211A82061a9F` |
-| DiamondLoupeFacet | `0x9A20C36A7ADE62E50C682707D2e8278d8Daf805C` |
-| OwnershipFacet | `0x1b65a91a889887a65e5f59F52A161D92359E493a` |
-| ERC721Facet | `0xef571eCD58Ee26e3c4Ca6bE8CAb6a88ABC58a6A7` |
-| ERC20Facet | `0xe7Fa28e17bE54A8a1C30D8F6638f8c42BBC5fad2` |
-| BorrowFacet | `0xc9CFdd1150F6048Ce90d215D971Ed327BC45D45A` |
-| MarketplaceFacet | `0x1AE32dfD7f063a13134CDCd5C194631843e158c0` |
-| StakingFacet | `0x41271490144e382B51457f2e09F6ad3eDEFC1fb8` |
-| MultisigFacet | `0xF5CaeC80ab327B5D0988974d938F29DB66eFF8D7` |
-| TreasuryFacet | `0xb3efE937539B09979A75D119441ed3869E899AeF` |
-| VRFFacet | `0x0b6E66E0E3f1f7d35C8dD209017D30CeB303D0c3` |
-| SVGFacet | `0xA2Af6b7216Cb77f00BE9D4e70d20894cBd40e8c6` |
-| FaucetFacet (implementation) | *Set when you deploy/upgrade — verify on explorer; users still call the **Diamond** only* |
+| Diamond | `0x5A9E09a12f3513F72161976818e87574bf9aD1E1` |
+| DiamondCutFacet | `0x70D428e9a61F4Ee4aC0Db823413f9248f618A480` |
+| DiamondLoupeFacet | `0x1D1F2A70C15634c484Ef13d060e7809538AC8878` |
+| OwnershipFacet | `0x20B07c3d614482d561076884482be5B431e6862f` |
+| ERC721Facet | `0x9db71D29D55Ff2aFd1803b4E61a5b470eb807881` |
+| ERC20Facet | `0x04323E8EB6655654021D169B4389Db7e33Aacd28` |
+| BorrowFacet | `0xFC7e730b46ea01601ea2a9F43053E4004348F8B4` |
+| MarketplaceFacet | `0xe593704a5Aa233641C5a43Ca198f8d1D1fcd3E8C` |
+| StakingFacet | `0xf173271fbfc1d30FC25b6eE33Aa04B76033295dE` |
+| MultisigFacet | `0xc021cEdc29Abc538C281541258D896DF3dec94D4` |
+| TreasuryFacet | `0x4F3F1cB798eB36082b9Fecf84fC9b597B3d02d3A` |
+| VRFFacet | `0x39FD1c27337FB54dC961aAcc6704116f8EA056Eb` |
+| SVGFacet | `0x4eD44326AAe00ECD10a97f30C891847d2c7c5D1f` |
+| FaucetFacet (implementation) | `0xF8d827ab460371E1161AAed013f4519a11986219` |
 | MockVRFCoordinator | `0x0c55C73B0ff33B973886989732E3f8B7A73992D0` |
 
 ---

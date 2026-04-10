@@ -23,9 +23,15 @@ export function BorrowModal({ isOpen, onClose, tokenId, onSuccess, onError }: Bo
   const { data: balance } = useTokenBalance(address);
   const { borrow, isPending: borrowing, isSuccess: borrowed } = useBorrowNFT();
 
+  const listingOwner = listing?.[0] ?? "";
   const borrowPrice = listing?.[1] ?? 0n;
   const duration = listing?.[2] ?? 0n;
   const collateralAmount = (collateral as bigint) ?? 0n;
+
+  const isOwnListing =
+    !!address &&
+    listingOwner.startsWith("0x") &&
+    listingOwner.toLowerCase() === address.toLowerCase();
 
   const hasEnoughBalance = balance !== undefined && (balance as bigint) >= borrowPrice;
 
@@ -74,7 +80,14 @@ export function BorrowModal({ isOpen, onClose, tokenId, onSuccess, onError }: Bo
           <p>• Miss deadline → NFT burned, collateral forfeited</p>
         </div>
 
-        {!hasEnoughBalance && (
+        {isOwnListing && (
+          <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
+            You cannot borrow your own stake listing — the protocol rejects <span className="font-mono">borrow</span>{" "}
+            when you are the lender.
+          </div>
+        )}
+
+        {!hasEnoughBalance && !isOwnListing && (
           <div className="bg-rose-50 border border-rose-100 rounded-xl p-3 text-xs text-rose-700">
             Insufficient PRM balance to pay the borrow fee.
           </div>
@@ -82,10 +95,11 @@ export function BorrowModal({ isOpen, onClose, tokenId, onSuccess, onError }: Bo
 
         <Button
           fullWidth variant="primary" loading={borrowing}
-          disabled={!hasEnoughBalance || borrowing || collateralLoading}
+          disabled={isOwnListing || !hasEnoughBalance || borrowing || collateralLoading}
+          title={isOwnListing ? "You are the staker for this listing" : undefined}
           onClick={() => borrow(tokenId, duration, collateralAmount)}
         >
-          {!hasEnoughBalance ? "Insufficient Balance" : "Borrow NFT"}
+          {isOwnListing ? "Cannot borrow own listing" : !hasEnoughBalance ? "Insufficient Balance" : "Borrow NFT"}
         </Button>
       </div>
     </Modal>
@@ -145,13 +159,22 @@ export function ReturnNFTModal({ isOpen, onClose, tokenId, onSuccess }: ReturnMo
         {expired && (
           <div className="bg-rose-50 border border-rose-100 rounded-xl p-3 text-xs text-rose-700">
             <p className="font-semibold">Deadline passed</p>
-            <p className="mt-1">You may still return the NFT but you may lose your collateral. Anyone can now liquidate this position.</p>
+            <p className="mt-1">
+              On-chain <span className="font-mono">returnNFT</span> only works before the deadline. The lender may
+              liquidate; use the Borrow page when the position shows Liquidate for them.
+            </p>
           </div>
         )}
 
-        <Button fullWidth variant={expired ? "danger" : "primary"} loading={isPending}
-          onClick={() => returnNFT(tokenId)}>
-          Return NFT & Reclaim Collateral
+        <Button
+          fullWidth
+          variant="primary"
+          loading={isPending}
+          disabled={expired}
+          title={expired ? "Return is not available after the deadline" : undefined}
+          onClick={() => returnNFT(tokenId)}
+        >
+          {expired ? "Return unavailable (deadline passed)" : "Return NFT & Reclaim Collateral"}
         </Button>
       </div>
     </Modal>

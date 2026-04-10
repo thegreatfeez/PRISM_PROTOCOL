@@ -32,13 +32,20 @@ function BorrowAvailableCard({
   const { data: borrowInfo } = useBorrowInfo(tokenId);
 
   const isListingActive = listing?.[3] ?? false;
+  const listingOwner = listing?.[0] ?? "";
   const borrower = borrowInfo?.[0] ?? "";
+  const lender = borrowInfo?.[1] ?? "";
   const deadline = borrowInfo?.[3] ?? 0n;
   const price = listing?.[1] ?? 0n;
   const duration = listing?.[2] ?? 0n;
 
-  const isActiveBorrow = borrower !== "0x0000000000000000000000000000000000000000";
+  const zero = "0x0000000000000000000000000000000000000000";
+  const isActiveBorrow = borrower !== zero;
   const isMyBorrow = isActiveBorrow && borrower.toLowerCase() === (userAddress ?? "").toLowerCase();
+  const isLender =
+    !!userAddress && lender.toLowerCase() !== zero && lender.toLowerCase() === userAddress.toLowerCase();
+  const isBorrowListingOwner =
+    !!userAddress && listingOwner.toLowerCase() !== zero && listingOwner.toLowerCase() === userAddress.toLowerCase();
   const expired = isExpired(deadline);
 
   // Show if available to borrow, or if it's my active borrow, or if it's an expired borrow (liquidatable)
@@ -52,22 +59,22 @@ function BorrowAvailableCard({
         tokenId={tokenId}
         showOwner
         actionLabel={
-          isMyBorrow
+          isMyBorrow && !expired
             ? "Return"
-            : isActiveBorrow && expired
-            ? "Liquidate"
-            : isListingActive && !isActiveBorrow
-            ? "Borrow"
-            : undefined
+            : isActiveBorrow && expired && isLender
+              ? "Liquidate"
+              : isListingActive && !isActiveBorrow && !isBorrowListingOwner
+                ? "Borrow"
+                : undefined
         }
         onAction={
-          isMyBorrow
+          isMyBorrow && !expired
             ? () => onReturn(tokenId)
-            : isActiveBorrow && expired
-            ? () => onLiquidate(tokenId)
-            : isListingActive && !isActiveBorrow
-            ? () => onBorrow(tokenId)
-            : undefined
+            : isActiveBorrow && expired && isLender
+              ? () => onLiquidate(tokenId)
+              : isListingActive && !isActiveBorrow && !isBorrowListingOwner
+                ? () => onBorrow(tokenId)
+                : undefined
         }
       />
       <div className={`mt-1 rounded-xl px-3 py-2 text-xs space-y-1 ${

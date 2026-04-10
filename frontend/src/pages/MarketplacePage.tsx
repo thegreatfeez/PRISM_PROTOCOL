@@ -17,6 +17,7 @@ import { formatToken, formatBps } from "../utils/formatters";
 import { useReadContracts } from "wagmi";
 import { useSearchParams } from "react-router-dom";
 import { DIAMOND_ADDRESS, ERC721_ABI } from "../config/contracts";
+import { useStakeInfosBatch, isStakedTokenId } from "../hooks/useStaking";
 
 // Check if a specific token is listed
 function MarketplaceNFTCard({
@@ -123,12 +124,20 @@ export function MarketplacePage() {
     setSearchParams(nextParams, { replace: true });
   };
 
-  // NFT ownership view (collection)
+  // NFT ownership view (collection) — wallet-held or staked-by-you (owner may be the diamond)
   const { ownerMap, isLoading: ownersLoading, refetch: refetchOwners } = useAllOwners(allIds);
+  const { stakerByTokenId, isLoading: stakesLoading } = useStakeInfosBatch(allIds);
   const myIds = useMemo(() => {
     if (!address) return [];
-    return allIds.filter((id) => ownerMap.get(id.toString())?.toLowerCase() === address.toLowerCase());
-  }, [allIds, ownerMap, address]);
+    return allIds.filter((id) => {
+      const owner = ownerMap.get(id.toString());
+      const staker = stakerByTokenId.get(id.toString());
+      return (
+        owner?.toLowerCase() === address.toLowerCase() ||
+        staker?.toLowerCase() === address.toLowerCase()
+      );
+    });
+  }, [allIds, ownerMap, stakerByTokenId, address]);
   const displayNFTIds = view !== "nfts"
     ? []
     : nftFilter === "mine"
@@ -248,7 +257,7 @@ export function MarketplacePage() {
           title="No NFTs minted yet"
           description="Once NFTs are minted, you can browse all or filter to those owned by your wallet."
         />
-      ) : ownersLoading ? (
+      ) : ownersLoading || stakesLoading ? (
         <div className="flex items-center justify-center py-16">
           <p className="text-sm text-slate-500">Loading NFT ownership…</p>
         </div>
@@ -267,16 +276,18 @@ export function MarketplacePage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
           {displayNFTIds.map((id) => {
             const owner = ownerMap.get(id.toString()) ?? "";
-            const isOwner = !!address && owner.toLowerCase() === address.toLowerCase();
+            const inWallet = !!address && owner.toLowerCase() === address.toLowerCase();
+            const staked = isStakedTokenId(stakerByTokenId, id);
+            const canStakeOrList = inWallet && !staked;
             return (
               <NFTCard
                 key={id.toString()}
                 tokenId={id}
-                showOwner={!isOwner}
-                actionLabel={isOwner ? "Stake" : undefined}
-                secondaryActionLabel={isOwner ? "List" : undefined}
-                onAction={isOwner ? () => setStakeModal(id) : undefined}
-                onSecondaryAction={isOwner ? () => setListModal(id) : undefined}
+                showOwner={!inWallet}
+                actionLabel={canStakeOrList ? "Stake" : undefined}
+                secondaryActionLabel={canStakeOrList ? "List" : undefined}
+                onAction={canStakeOrList ? () => setStakeModal(id) : undefined}
+                onSecondaryAction={canStakeOrList ? () => setListModal(id) : undefined}
               />
             );
           })}

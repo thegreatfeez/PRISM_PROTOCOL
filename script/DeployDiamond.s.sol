@@ -97,6 +97,20 @@ contract DeployDiamond is Script, DiamondUpgradeHelper {
             abi.encodeWithSelector(ERC20Facet.initERC20.selector, erc20Name, erc20Symbol, erc20Decimals)
         );
 
+        uint256[] memory stakeDurations = new uint256[](3);
+        stakeDurations[0] = 3 days;
+        stakeDurations[1] = 7 days;
+        stakeDurations[2] = 14 days;
+        uint256[] memory stakeRewardBps = new uint256[](3);
+        stakeRewardBps[0] = 7000;
+        stakeRewardBps[1] = 8000;
+        stakeRewardBps[2] = 9000;
+        uint256 stakerBps = vm.envOr("STAKING_STAKER_BPS", uint256(8000));
+        _multisigCall(
+            address(diamond),
+            abi.encodeWithSelector(StakingFacet.initStaking.selector, stakeDurations, stakeRewardBps, stakerBps)
+        );
+
         address vrfCoordinator = vm.envOr("VRF_COORDINATOR", address(0));
         if (vrfCoordinator != address(0)) {
             uint256 subId = vm.envOr("VRF_SUB_ID", uint256(0));
